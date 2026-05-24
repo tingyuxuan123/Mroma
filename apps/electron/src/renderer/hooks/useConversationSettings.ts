@@ -40,11 +40,14 @@ function useMapSetter<T>(
   return React.useCallback(
     (value: T | ((prev: T) => T)) => {
       setMap((prev) => {
+        const current = prev.get(key)
         const map = new Map(prev)
         if (typeof value === 'function') {
-          const current = map.get(key)
-          map.set(key, (value as (prev: T) => T)(current as T))
+          const next = (value as (prev: T) => T)(current as T)
+          if (Object.is(current, next)) return prev
+          map.set(key, next)
         } else {
+          if (Object.is(current, value)) return prev
           map.set(key, value)
         }
         return map
@@ -78,6 +81,13 @@ export function useConversationModelOptional(): [SelectedModel | null, ((m: Sele
     (model: SelectedModel | null) => {
       if (!conversationId) return
       setMap((prev) => {
+        const current = prev.get(conversationId) ?? null
+        if (
+          current?.channelId === model?.channelId &&
+          current?.modelId === model?.modelId
+        ) {
+          return prev
+        }
         const m = new Map(prev)
         m.set(conversationId, model)
         return m

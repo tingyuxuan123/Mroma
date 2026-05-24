@@ -65,14 +65,18 @@ export function InputToolbarOverflow({
   React.useLayoutEffect(() => {
     const el = containerRef.current
     if (!el) return
-    setContainerWidth(el.getBoundingClientRect().width)
+    const initialWidth = el.getBoundingClientRect().width
+    setContainerWidth((prev) => (Math.abs(prev - initialWidth) > 0.5 ? initialWidth : prev))
 
     let raf = 0
     const observer = new ResizeObserver((entries) => {
       cancelAnimationFrame(raf)
       raf = requestAnimationFrame(() => {
         const entry = entries[0]
-        if (entry) setContainerWidth(entry.contentRect.width)
+        if (entry) {
+          const nextWidth = entry.contentRect.width
+          setContainerWidth((prev) => (Math.abs(prev - nextWidth) > 0.5 ? nextWidth : prev))
+        }
       })
     })
     observer.observe(el)
@@ -114,7 +118,7 @@ export function InputToolbarOverflow({
       cancelAnimationFrame(raf)
       observer.disconnect()
     }
-  })
+  }, [readWidths, items])
 
   /**
    * 计算可见数量：依次累加 item 宽度直到超出容器，

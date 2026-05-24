@@ -179,6 +179,13 @@ function ChatViewInner({ conversationId }: ChatViewProps): React.ReactElement {
   React.useEffect(() => {
     if (conversationChannelId && conversationModelId) {
       setConversationModels((prev) => {
+        const current = prev.get(conversationId)
+        if (
+          current?.channelId === conversationChannelId &&
+          current?.modelId === conversationModelId
+        ) {
+          return prev
+        }
         const map = new Map(prev)
         map.set(conversationId, {
           channelId: conversationChannelId,

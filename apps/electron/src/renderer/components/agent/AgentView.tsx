@@ -1111,11 +1111,13 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
   const handleModelSelect = React.useCallback((option: ModelOption): void => {
     // 更新当前会话的 per-session 配置
     setSessionChannelMap((prev) => {
+      if (prev.get(sessionId) === option.channelId) return prev
       const map = new Map(prev)
       map.set(sessionId, option.channelId)
       return map
     })
     setSessionModelMap((prev) => {
+      if (prev.get(sessionId) === option.modelId) return prev
       const map = new Map(prev)
       map.set(sessionId, option.modelId)
       return map
@@ -1130,8 +1132,12 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     }
 
     // 同时更新全局默认值（新会话继承）
-    setDefaultChannelId(option.channelId)
-    setDefaultModelId(option.modelId)
+    if (defaultChannelId !== option.channelId) {
+      setDefaultChannelId(option.channelId)
+    }
+    if (defaultModelId !== option.modelId) {
+      setDefaultModelId(option.modelId)
+    }
 
     // 持久化到设置
     window.electronAPI.updateSettings({
@@ -1139,7 +1145,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       agentModelId: option.modelId,
       agentChannelIds: updatedChannelIds,
     }).catch(console.error)
-  }, [sessionId, setSessionChannelMap, setSessionModelMap, setDefaultChannelId, setDefaultModelId, agentChannelIds, setAgentChannelIds])
+  }, [sessionId, setSessionChannelMap, setSessionModelMap, defaultChannelId, defaultModelId, setDefaultChannelId, setDefaultModelId, agentChannelIds, setAgentChannelIds])
 
   /** 构建 externalSelectedModel 给 ModelSelector */
   const externalSelectedModel = React.useMemo(() => {

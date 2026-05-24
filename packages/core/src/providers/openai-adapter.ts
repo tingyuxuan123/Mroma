@@ -185,7 +185,10 @@ function appendContinuationMessages(
 // ===== 适配器实现 =====
 
 export class OpenAIAdapter implements ProviderAdapter {
-  readonly providerType = 'openai' as const
+  // providerType 用于日志展示与 SSE reader 的诊断标签（不参与协议分支判断）。
+  // OpenAIAdapter 同时服务 openai-chat / openai-responses / 智谱 / 豆包 / 通义等
+  // 所有 OpenAI 兼容协议的渠道，统一打 'openai-chat' 标签。
+  readonly providerType = 'openai-chat' as const
 
   buildStreamRequest(input: StreamRequestInput): ProviderRequest {
     const url = normalizeBaseUrl(input.baseUrl)

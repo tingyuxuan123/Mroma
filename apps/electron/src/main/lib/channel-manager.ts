@@ -21,7 +21,7 @@ import type {
   FetchModelsResult,
   ProviderType,
 } from '@mroma/shared'
-import { PROVIDER_DEFAULT_URLS } from '@mroma/shared'
+import { PROVIDER_DEFAULT_URLS, LEGACY_PROVIDER_MAPPING } from '@mroma/shared'
 import { getFetchFn } from './proxy-fetch'
 import { getEffectiveProxyUrl } from './proxy-settings-service'
 import { normalizeAnthropicBaseUrl, normalizeBaseUrl, normalizeVersionedAnthropicBaseUrl } from '@mroma/core'
@@ -31,6 +31,10 @@ const CONFIG_VERSION = 1
 
 /**
  * 读取渠道配置文件
+ *
+ * 同时执行 legacy provider 迁移：把老的 `openai` / `custom` / `codex` 字面量
+ * 重写为新的 `openai-chat` / `openai-responses`。迁移幂等且只在检测到老值时
+ * 触发写盘，对已经是新值的配置零开销。
  */
 function readConfig(): ChannelsConfig {
   const configPath = getChannelsPath()
@@ -41,11 +45,39 @@ function readConfig(): ChannelsConfig {
 
   try {
     const raw = readFileSync(configPath, 'utf-8')
-    return JSON.parse(raw) as ChannelsConfig
+    const config = JSON.parse(raw) as ChannelsConfig
+    if (migrateLegacyChannelProviders(config)) {
+      try {
+        writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
+        console.log('[渠道管理] 已迁移老版 ProviderType 字面量到 openai-chat / openai-responses')
+      } catch (writeErr) {
+        console.error('[渠道管理] 迁移后回写失败（运行时仍使用迁移后的值）:', writeErr)
+      }
+    }
+    return config
   } catch (error) {
     console.error('[渠道管理] 读取配置文件失败:', error)
     return { version: CONFIG_VERSION, channels: [] }
   }
+}
+
+/**
+ * 把 channels.json 中老的 provider 字面量改写为新值
+ *
+ * 历史背景见 `LEGACY_PROVIDER_MAPPING` 注释。返回 true 表示有改动需要回写。
+ */
+function migrateLegacyChannelProviders(config: ChannelsConfig): boolean {
+  let mutated = false
+  for (const channel of config.channels) {
+    const legacy = channel.provider as unknown as string
+    const target = LEGACY_PROVIDER_MAPPING[legacy]
+    if (target) {
+      console.log(`[渠道管理] 迁移渠道 ${channel.name}: provider ${legacy} → ${target}`)
+      channel.provider = target
+      mutated = true
+    }
+  }
+  return mutated
 }
 
 /**
@@ -272,12 +304,11 @@ export async function testChannel(channelId: string): Promise<ChannelTestResult>
       case 'kimi-coding':
       case 'minimax':
         return await testAnthropicCompatible(channel.baseUrl, apiKey, proxyUrl, channel.provider)
-      case 'openai':
+      case 'openai-chat':
+      case 'openai-responses':
       case 'zhipu':
       case 'doubao':
       case 'qwen':
-      case 'custom':
-      case 'codex':
         return await testOpenAICompatible(channel.baseUrl, apiKey, proxyUrl)
       case 'google':
         return await testGoogle(channel.baseUrl, apiKey, proxyUrl)
@@ -432,12 +463,11 @@ export async function testChannelDirect(input: FetchModelsInput): Promise<Channe
       case 'kimi-coding':
       case 'minimax':
         return await testAnthropicCompatible(input.baseUrl, input.apiKey, proxyUrl, input.provider)
-      case 'openai':
+      case 'openai-chat':
+      case 'openai-responses':
       case 'zhipu':
       case 'doubao':
       case 'qwen':
-      case 'custom':
-      case 'codex':
         return await testOpenAICompatible(input.baseUrl, input.apiKey, proxyUrl)
       case 'google':
         return await testGoogle(input.baseUrl, input.apiKey, proxyUrl)
@@ -469,12 +499,11 @@ export async function fetchModels(input: FetchModelsInput): Promise<FetchModelsR
       case 'kimi-coding':
       case 'minimax':
         return await fetchAnthropicCompatibleModels(input.baseUrl, input.apiKey, proxyUrl, input.provider)
-      case 'openai':
+      case 'openai-chat':
+      case 'openai-responses':
       case 'zhipu':
       case 'doubao':
       case 'qwen':
-      case 'custom':
-      case 'codex':
         return await fetchOpenAICompatibleModels(input.baseUrl, input.apiKey, proxyUrl)
       case 'google':
         return await fetchGoogleModels(input.baseUrl, input.apiKey, proxyUrl)

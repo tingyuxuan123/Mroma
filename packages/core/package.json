@@ -1,6 +1,6 @@
 {
   "name": "@mroma/core",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "license": "Apache-2.0",
   "description": "mroma core types,storage and core logic with agents",
   "type": "module",

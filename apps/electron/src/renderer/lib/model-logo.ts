@@ -230,7 +230,8 @@ const MODEL_LOGO_MAP: Record<string, string> = {
  */
 const PROVIDER_LOGO_MAP: Record<ProviderType, string> = {
   anthropic: ClaudeLogo,
-  openai: OpenAILogo,
+  'openai-chat': OpenAILogo,
+  'openai-responses': OpenAILogo,
   deepseek: DeepSeekLogo,
   google: GeminiLogo,
   'kimi-api': KimiLogo,
@@ -239,8 +240,6 @@ const PROVIDER_LOGO_MAP: Record<ProviderType, string> = {
   minimax: MiniMaxLogo,
   doubao: DoubaoLogo,
   qwen: QwenLogo,
-  custom: DefaultLogo,
-  codex: OpenAILogo,
 }
 
 /**

@@ -541,20 +541,23 @@ export class AgentOrchestrator {
     // 即使 index.ts 启动时已清理过一次，initializeRuntime() 中的
     // loadShellEnv() 可能从 shell 配置文件（~/.zshrc 等）重新注入这些变量。
     const cleanEnv: Record<string, string | undefined> = {}
+    const isCodexProvider = provider === 'openai-chat' || provider === 'openai-responses'
     for (const [key, value] of Object.entries(process.env)) {
       if (key.startsWith('ANTHROPIC_')) continue
-      // Codex 路径下要让 codex CLI 读不到旧的 OPENAI_*，否则会优先使用 shell 注入的 key
-      if (provider === 'codex' && (key === 'OPENAI_API_KEY' || key === 'OPENAI_BASE_URL' || key === 'CODEX_API_KEY')) continue
+      // Codex 后端要让 codex CLI 读不到旧的 OPENAI_*，否则会优先使用 shell 注入的 key
+      if (isCodexProvider && (key === 'OPENAI_API_KEY' || key === 'OPENAI_BASE_URL' || key === 'CODEX_API_KEY')) continue
       cleanEnv[key] = value
     }
 
-    // Codex 路径：构造一份仅包含 PATH/HOME/SHELL/代理等基础变量 + OPENAI_*/CODEX_* 的环境
+    // Codex 后端（openai-chat / openai-responses）：构造一份仅包含 PATH/HOME/SHELL/代理等基础变量
+    // + OPENAI_*/CODEX_* 的环境，附加 MROMA_CODEX_WIRE_API 让 codex-agent-adapter 决定走哪种协议。
     // Claude 字段（CLAUDE_*）对 codex 无意义但也无害
-    if (provider === 'codex') {
+    if (isCodexProvider) {
       const codexEnv: Record<string, string | undefined> = {
         ...cleanEnv,
         CODEX_API_KEY: apiKey,
         OPENAI_API_KEY: apiKey,
+        MROMA_CODEX_WIRE_API: provider === 'openai-chat' ? 'chat' : 'responses',
       }
       if (baseUrl) codexEnv.OPENAI_BASE_URL = baseUrl
       const codexProxyUrl = await getEffectiveProxyUrl()
@@ -1046,8 +1049,9 @@ export class AgentOrchestrator {
     delete process.env.ANTHROPIC_AUTH_TOKEN
     delete process.env.ANTHROPIC_BASE_URL
     delete process.env.ANTHROPIC_CUSTOM_HEADERS
-    if (channel.provider === 'codex') {
-      // Codex 路径：清理 ANTHROPIC_*，注入 OPENAI_* / CODEX_*
+    const channelIsCodex = channel.provider === 'openai-chat' || channel.provider === 'openai-responses'
+    if (channelIsCodex) {
+      // Codex 后端：清理 ANTHROPIC_*，注入 OPENAI_* / CODEX_*
       delete process.env.OPENAI_API_KEY
       delete process.env.OPENAI_BASE_URL
       delete process.env.CODEX_API_KEY
@@ -1065,7 +1069,7 @@ export class AgentOrchestrator {
       process.env.ANTHROPIC_API_KEY = apiKey
     }
     // 使用与 buildSdkEnv 相同的规范化逻辑，确保 process.env 和 sdkEnv 中的 URL 一致
-    if (channel.provider !== 'codex' && channel.baseUrl && channel.baseUrl !== 'https://api.anthropic.com') {
+    if (!channelIsCodex && channel.baseUrl && channel.baseUrl !== 'https://api.anthropic.com') {
       process.env.ANTHROPIC_BASE_URL = normalizeAnthropicBaseUrlForSdk(channel.baseUrl)
     }
 
@@ -1106,8 +1110,8 @@ export class AgentOrchestrator {
     let workspace: import('@mroma/shared').AgentWorkspace | undefined
 
     try {
-      // 8. 动态导入 SDK（Codex 路径不需要 Claude Agent SDK）
-      const isCodex = channel.provider === 'codex'
+      // 8. 动态导入 SDK（Codex 后端不需要 Claude Agent SDK）
+      const isCodex = channel.provider === 'openai-chat' || channel.provider === 'openai-responses'
       const sdk = isCodex
         ? null
         : await import('@anthropic-ai/claude-agent-sdk')

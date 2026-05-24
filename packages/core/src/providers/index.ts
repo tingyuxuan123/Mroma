@@ -25,7 +25,8 @@ export { GoogleAdapter } from './google-adapter.ts'
 /** 供应商适配器注册表 */
 const adapterRegistry = new Map<ProviderType, ProviderAdapter>([
   ['anthropic', new AnthropicAdapter()],
-  ['openai', new OpenAIAdapter()],
+  ['openai-chat', new OpenAIAdapter()],
+  ['openai-responses', new OpenAIAdapter()],   // Chat / fetchModels / 标题生成阶段沿用 OpenAI 兼容协议
   ['deepseek', new AnthropicAdapter('deepseek')],   // DeepSeek 使用 Anthropic 兼容协议
   ['kimi-api', new AnthropicAdapter('kimi-api')],       // Kimi API 的 Anthropic 协议端点
   ['kimi-coding', new AnthropicAdapter('kimi-coding')], // Kimi Coding Plan 订阅制（强制 User-Agent）
@@ -33,10 +34,6 @@ const adapterRegistry = new Map<ProviderType, ProviderAdapter>([
   ['minimax', new AnthropicAdapter('minimax')], // MiniMax 使用 Anthropic 兼容协议
   ['doubao', new OpenAIAdapter()],        // 豆包使用 OpenAI 兼容协议
   ['qwen', new OpenAIAdapter()],          // 通义千问使用 OpenAI 兼容协议
-  ['custom', new OpenAIAdapter()],        // 自定义也使用 OpenAI 兼容协议
-  // Codex 渠道在 Chat 模式 / fetchModels / 标题生成阶段沿用 OpenAI 兼容协议；
-  // Agent 模式由 apps/electron/src/main/lib/adapters/codex-agent-adapter.ts 接管。
-  ['codex', new OpenAIAdapter()],
   ['google', new GoogleAdapter()],
 ])
 

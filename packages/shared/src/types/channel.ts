@@ -10,7 +10,8 @@
  */
 export type ProviderType =
   | 'anthropic'
-  | 'openai'
+  | 'openai-chat'
+  | 'openai-responses'
   | 'deepseek'
   | 'google'
   | 'kimi-api'
@@ -19,15 +20,30 @@ export type ProviderType =
   | 'minimax'
   | 'doubao'
   | 'qwen'
-  | 'custom'
-  | 'codex'
+
+/**
+ * 旧版 ProviderType 字面量到当前归一化协议名的迁移映射
+ *
+ * 历史背景：
+ * - 早期分别有 `openai`（OpenAI 官方）、`custom`（任意 OpenAI 兼容端点）、`codex`（OpenAI Codex）
+ * - 这三者本质只有两种协议：Chat Completions 与 Responses API
+ * - 2026-05 重构：统一成 `openai-chat`（Chat Completions）和 `openai-responses`（Responses API）
+ *
+ * 此映射供 channel-manager.ts 在加载 channels.json 时一次性改写老数据使用。
+ */
+export const LEGACY_PROVIDER_MAPPING: Record<string, ProviderType> = {
+  openai: 'openai-chat',
+  custom: 'openai-chat',
+  codex: 'openai-responses',
+}
 
 /**
  * 各供应商的默认 Base URL
  */
 export const PROVIDER_DEFAULT_URLS: Record<ProviderType, string> = {
   anthropic: 'https://api.anthropic.com',
-  openai: 'https://api.openai.com/v1',
+  'openai-chat': 'https://api.openai.com/v1',
+  'openai-responses': 'https://api.openai.com/v1',
   deepseek: 'https://api.deepseek.com/anthropic',
   google: 'https://generativelanguage.googleapis.com',
   'kimi-api': 'https://api.moonshot.cn/anthropic',
@@ -36,8 +52,6 @@ export const PROVIDER_DEFAULT_URLS: Record<ProviderType, string> = {
   minimax: 'https://api.minimaxi.com/anthropic',
   doubao: 'https://ark.cn-beijing.volces.com/api/v3',
   qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-  custom: '',
-  codex: 'https://api.openai.com/v1',
 }
 
 /**
@@ -45,7 +59,8 @@ export const PROVIDER_DEFAULT_URLS: Record<ProviderType, string> = {
  */
 export const PROVIDER_LABELS: Record<ProviderType, string> = {
   anthropic: 'Anthropic',
-  openai: 'OpenAI',
+  'openai-chat': 'OpenAI Chat Completions',
+  'openai-responses': 'OpenAI Responses (Codex)',
   deepseek: 'DeepSeek',
   google: 'Google',
   'kimi-api': 'Kimi API (Anthropic 协议)',
@@ -54,16 +69,16 @@ export const PROVIDER_LABELS: Record<ProviderType, string> = {
   minimax: 'MiniMax (API&编程包)',
   doubao: '豆包',
   qwen: '通义千问',
-  custom: 'OpenAI 兼容格式',
-  codex: 'OpenAI Codex',
 }
 
 /**
  * 支持 Agent 模式的供应商类型
  *
- * - Anthropic 兼容渠道（anthropic / deepseek / kimi-api / kimi-coding / minimax）
- *   通过 Claude Agent SDK 调用 `/v1/messages` 端点
- * - codex 渠道通过 OpenAI Codex SDK / Codex CLI 调用 OpenAI Responses 端点
+ * - Anthropic 协议兼容渠道（anthropic / deepseek / kimi-api / kimi-coding / minimax）
+ *   通过 Claude Agent SDK 调用 `/v1/messages`
+ * - openai-responses 通过 OpenAI Codex SDK 走 Responses API（wss + /v1/responses，仅 OpenAI 官方端点支持）
+ * - openai-chat 通过 OpenAI Codex SDK 走 Chat Completions API（wire_api = "chat"），
+ *   支持任意 OpenAI Chat Completions 兼容端点（小米 MiMo / 智谱 / 豆包 / 第三方代理等）
  */
 export const AGENT_COMPATIBLE_PROVIDERS: ReadonlySet<ProviderType> = new Set<ProviderType>([
   'anthropic',
@@ -71,7 +86,8 @@ export const AGENT_COMPATIBLE_PROVIDERS: ReadonlySet<ProviderType> = new Set<Pro
   'kimi-api',
   'kimi-coding',
   'minimax',
-  'codex',
+  'openai-chat',
+  'openai-responses',
 ])
 
 /**

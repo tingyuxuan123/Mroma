@@ -434,36 +434,41 @@ export class CodexAgentAdapter implements AgentProviderAdapter {
 
     // 4. 构造 Codex 实例
     //
-    // 两种连接协议：
-    //  - Responses API（默认，wss + /v1/responses）：用于 openai-responses，仅 OpenAI 官方端点支持
-    //  - Chat Completions API（wire_api = "chat"）：用于 openai-chat，覆盖任意 OpenAI Chat 兼容端点
+    // 协议选择：
+    // - OpenAI 官方端点 / 未填 baseUrl → 走默认 openai provider（Responses API，wss://）
+    // - 任何其他 baseUrl（小米 MiMo / DeepSeek / 智谱 / 自建网关等）→ 注入自定义
+    //   model_providers.mroma_custom 配置 + wire_api = "chat"，让 codex 改走标准
+    //   Chat Completions 协议（POST /chat/completions），从而能复用市面绝大多数
+    //   OpenAI 兼容服务
     //
-    // wire 协议由 orchestrator 通过 env.MROMA_CODEX_WIRE_API 旁路传入（值为 'chat' / 'responses'）。
-    // 当走 chat 协议时，注册一个自定义 model_provider（id = mroma_custom_chat），通过 SDK 的
-    // config 字段下发到 codex CLI 的 --config model_providers.<id>.* 参数；同时把 model_provider
-    // 顶层指针指向它，让 codex 切到该 provider。
-    const wireApi: 'chat' | 'responses' = env?.MROMA_CODEX_WIRE_API === 'chat' ? 'chat' : 'responses'
-    const sdkConfig: import('@openai/codex-sdk').CodexOptions['config'] = wireApi === 'chat'
-      ? {
-          model_provider: 'mroma_custom_chat',
-          model_providers: {
-            mroma_custom_chat: {
-              name: 'Mroma OpenAI Chat',
-              base_url: baseUrl || 'https://api.openai.com/v1',
-              wire_api: 'chat',
-              env_key: 'OPENAI_API_KEY',
-            },
-          },
-        }
-      : undefined
+    // codex 内置 provider id（'openai' / 'ollama' / 'lmstudio'）不允许 override，
+    // 必须用新的 id（这里用 'mroma_custom'）+ 顶层 `model_provider` 切换。
+    const isOpenAIOfficial = !baseUrl || /^https?:\/\/api\.openai\.com(\/|$)/i.test(baseUrl)
+    const codexConfig: Record<string, unknown> = {}
+    if (!isOpenAIOfficial && baseUrl) {
+      codexConfig.model_providers = {
+        mroma_custom: {
+          name: 'Mroma Custom Provider',
+          base_url: baseUrl,
+          env_key: 'OPENAI_API_KEY',
+          wire_api: 'chat',
+        },
+      }
+      codexConfig.model_provider = 'mroma_custom'
+    }
 
     const codex = new CodexCtor({
       apiKey,
-      // wire=chat 时 baseUrl 已写进 model_providers.mroma_custom_chat.base_url，不需要再下发顶层
-      // openai_base_url（它只对内置 openai provider 生效）
-      ...(wireApi === 'responses' && baseUrl && { baseUrl }),
+      // 仅在 OpenAI 官方端点时传 baseUrl 选项（它只覆盖默认 openai provider 的 URL）；
+      // 自定义 provider 的 base_url 已写进 codexConfig.model_providers
+      ...(isOpenAIOfficial && baseUrl && { baseUrl }),
       env: codexEnv,
-      ...(sdkConfig && { config: sdkConfig }),
+      // sdkConfig 仅含 TOML 可序列化标量值，与 codex-sdk 的 CodexConfigObject 结构兼容
+      ...(Object.keys(codexConfig).length > 0 && {
+        config: codexConfig as ConstructorParameters<typeof CodexCtor>[0] extends infer T
+          ? T extends { config?: infer C } ? C : undefined
+          : undefined,
+      }),
     })
 
     // 5. 构造 ThreadOptions（sandbox / approval / model / cwd 都放这里）

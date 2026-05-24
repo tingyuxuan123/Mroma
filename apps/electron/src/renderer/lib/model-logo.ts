@@ -240,6 +240,7 @@ const PROVIDER_LOGO_MAP: Record<ProviderType, string> = {
   doubao: DoubaoLogo,
   qwen: QwenLogo,
   custom: DefaultLogo,
+  codex: OpenAILogo,
 }
 
 /**

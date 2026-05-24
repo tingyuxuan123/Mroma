@@ -56,10 +56,11 @@ mroma-v2/
 - **依赖**：`@mroma/core`、`beautiful-mermaid`、`shiki`、Radix UI
 - **Peer 依赖**：`react@^18.3.0`、`react-dom@^18.3.0`
 
-#### @mroma/electron (v0.9.5)
+#### @mroma/electron (v0.9.43)
 - **职责**：Electron 桌面应用主体，集成所有包
 - **关键依赖**：
-  - `@anthropic-ai/claude-agent-sdk@0.3.143` - Agent SDK
+  - `@anthropic-ai/claude-agent-sdk@0.3.143` - Claude Agent SDK
+  - `@openai/codex-sdk@0.133.0` - OpenAI Codex Agent SDK（spawn codex CLI 子进程）
   - `@larksuiteoapi/node-sdk` - 飞书集成
   - Radix UI、TipTap、Tailwind CSS
   - 文件解析：`pdf-parse`、`officeparser`、`word-extractor`
@@ -136,6 +137,7 @@ bun run generate:icons    # 生成应用图标
 | **打包工具** | esbuild | 0.24.0+ |
 | **分发工具** | Electron Builder | 25.1.8 |
 | **Agent SDK** | @anthropic-ai/claude-agent-sdk | 0.3.143 |
+| **Codex SDK** | @openai/codex-sdk | 0.133.0 |
 | **飞书 SDK** | @larksuiteoapi/node-sdk | 最新 |
 
 ## 核心架构
@@ -236,6 +238,21 @@ bun run generate:icons    # 生成应用图标
 #### 多模态支持
 - **图片**：各 Provider 格式不同，适配器自动转换
 - **文档**：提取文本后注入 `<file>` XML 标签
+
+#### 新增 ProviderType 检查清单
+
+新增一个 `ProviderType` 字面量值时，TypeScript 编译器只会在用 `Record<ProviderType, X>` 的位置报错（如 `PROVIDER_DEFAULT_URLS` / `PROVIDER_LABELS` / `PROVIDER_CHAT_PATHS` / `PROVIDER_LOGO_MAP`）。但代码里**还存在不少手写的 `ProviderType[]` 字面量数组**，编译器不会捕获遗漏。
+
+每次新增 provider 必须人工 grep 这些点，否则 UI 看似什么都没坏，但下拉框/分支逻辑会静默缺失：
+
+- `packages/shared/src/types/channel.ts`：`ProviderType` 联合 + 4 个 `Record` 表（URLs/Labels/AgentCompatible）
+- `packages/core/src/providers/index.ts`：`adapterRegistry` Map
+- `apps/electron/src/main/lib/channel-manager.ts`：`testChannel` / `testChannelDirect` / `fetchModels` 的 `switch (provider)`
+- `apps/electron/src/renderer/components/settings/ChannelForm.tsx`：**`PROVIDER_OPTIONS` 静态数组**（控制下拉框）+ `PROVIDER_CHAT_PATHS` 表 + `buildPreviewUrl` 的分支
+- `apps/electron/src/renderer/lib/model-logo.ts`：`PROVIDER_LOGO_MAP` 表
+- Agent 模式还需触动：`apps/electron/src/main/lib/agent-service.ts` 的 adapter 工厂、`agent-orchestrator.ts` 的 `buildSdkEnv` / `process.env` 同步段 / `isCodex` 等条件分支、`agent-prompt-builder.ts` 的 `backend` 字段（如果需要在 prompt 自报家门）
+
+**最快的发现方式**：`grep -rn "'anthropic'.*'openai'" apps packages` —— 任何手写的 provider 列表都会命中。
 
 ### Jotai 状态管理（`renderer/atoms/`）
 
@@ -390,7 +407,29 @@ bun run generate:icons    # 生成应用图标
 
 ## Agent SDK 集成架构
 
-基于 `@anthropic-ai/claude-agent-sdk@0.3.143` 实现 Agent 模式，与 Chat 模式并行。
+Mroma Agent 模式由 **AgentOrchestrator** 统一编排，底层通过 **AgentProviderAdapter** 接口接入不同后端：
+
+| Provider 集合 | Adapter | 底层 SDK | Binary 依赖 |
+|---------------|---------|----------|-------------|
+| anthropic / deepseek / kimi-api / kimi-coding / minimax | `ClaudeAgentAdapter` | `@anthropic-ai/claude-agent-sdk@0.3.143` | 内置平台子包（claude / claude.exe） |
+| codex | `CodexAgentAdapter` | `@openai/codex-sdk@0.133.0` | **需用户全局安装 `codex` CLI**（npm i -g @openai/codex 或 brew install --cask codex） |
+
+`agent-service.ts` 通过 `getAgentAdapter(provider)` 工厂按需懒加载 adapter；orchestrator 在 `sendMessage` 中根据 `channel.provider` 选择路径，Codex 路径会跳过 Claude SDK 特定步骤（resolveSDKCliPath、import claude SDK、.claude/settings.json 创建、MCP server 注入、agents/effort/thinking/canUseTool 等字段）。
+
+### Codex Adapter（`adapters/codex-agent-adapter.ts`）
+
+- **依赖**：动态 import `@openai/codex-sdk`，未安装时不阻断启动，仅在用户选择 Codex 渠道发起请求时触发
+- **CLI 二进制**：codex-sdk 通过系统 PATH 解析 `codex` 可执行文件，**MVP 阶段要求用户自行安装**（暂未内嵌 binary 到 Electron 包）
+- **认证**：env / `apiKey` 选项注入 `CODEX_API_KEY` + `OPENAI_API_KEY`；自定义 `baseUrl` 通过 SDK 选项 → CLI `--config openai_base_url=...`
+- **事件映射**：
+  - `thread.started` → `SDKSystemMessage{subtype:'init',session_id}`，捕获 thread_id 作为 sdkSessionId
+  - `item.completed` 按 type 分发：`agent_message` → text block；`reasoning` → thinking block；`command_execution` → Bash tool_use + tool_result 对；`file_change` → Edit tool_use + 结果；`mcp_tool_call` → 工具调用对；`web_search` → WebSearch；`plan_update`/`todo_list` → TaskUpdate
+  - `turn.completed` → `SDKResultMessage{subtype:'success',usage}`；`turn.failed`/`error` → `subtype:'error_during_execution'`
+- **权限映射**：Mroma 三档 → Codex `sandboxMode + approvalPolicy`
+  - `plan` → `read-only + never`
+  - `auto` → `workspace-write + on-failure`
+  - `bypassPermissions` → `danger-full-access + never`
+- **MVP 限制**：不支持图片输入、structured outputSchema、SDK 级 canUseTool 拦截、queued message 注入、interrupt
 
 ### 核心流程
 
@@ -486,8 +525,9 @@ React UI 更新
 
 ### 已实现功能
 
-- ✅ **多 Provider 支持**：Anthropic、OpenAI、DeepSeek、Kimi、智谱、MiniMax、豆包、通义千问、Google、自定义端点
+- ✅ **多 Provider 支持**：Anthropic、OpenAI、DeepSeek、Kimi、智谱、MiniMax、豆包、通义千问、Google、OpenAI Codex、自定义端点
 - ✅ **Agent SDK 集成**：基于 Claude Agent SDK 的完整 Agent 模式
+- ✅ **Codex SDK 集成**：基于 @openai/codex-sdk 的 Codex Agent 路径（spawn codex CLI 子进程 + JSONL 事件流）
 - ✅ **飞书集成**：消息同步、任务通知、OAuth 认证（68KB 核心服务）
 - ✅ **工作区管理**：多工作区隔离、MCP Server 配置、Skills 管理
 - ✅ **权限系统**：工具权限检查、用户确认流程

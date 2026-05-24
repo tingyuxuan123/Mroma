@@ -34,6 +34,9 @@ const adapterRegistry = new Map<ProviderType, ProviderAdapter>([
   ['doubao', new OpenAIAdapter()],        // 豆包使用 OpenAI 兼容协议
   ['qwen', new OpenAIAdapter()],          // 通义千问使用 OpenAI 兼容协议
   ['custom', new OpenAIAdapter()],        // 自定义也使用 OpenAI 兼容协议
+  // Codex 渠道在 Chat 模式 / fetchModels / 标题生成阶段沿用 OpenAI 兼容协议；
+  // Agent 模式由 apps/electron/src/main/lib/adapters/codex-agent-adapter.ts 接管。
+  ['codex', new OpenAIAdapter()],
   ['google', new GoogleAdapter()],
 ])
 

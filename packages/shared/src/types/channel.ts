@@ -20,6 +20,7 @@ export type ProviderType =
   | 'doubao'
   | 'qwen'
   | 'custom'
+  | 'codex'
 
 /**
  * 各供应商的默认 Base URL
@@ -36,6 +37,7 @@ export const PROVIDER_DEFAULT_URLS: Record<ProviderType, string> = {
   doubao: 'https://ark.cn-beijing.volces.com/api/v3',
   qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   custom: '',
+  codex: 'https://api.openai.com/v1',
 }
 
 /**
@@ -53,13 +55,15 @@ export const PROVIDER_LABELS: Record<ProviderType, string> = {
   doubao: '豆包',
   qwen: '通义千问',
   custom: 'OpenAI 兼容格式',
+  codex: 'OpenAI Codex',
 }
 
 /**
  * 支持 Agent 模式的供应商类型
  *
- * Agent SDK 通过 Anthropic 兼容协议调用 `/v1/messages` 端点，
- * 因此所有 Anthropic 协议兼容的供应商都可以用于 Agent。
+ * - Anthropic 兼容渠道（anthropic / deepseek / kimi-api / kimi-coding / minimax）
+ *   通过 Claude Agent SDK 调用 `/v1/messages` 端点
+ * - codex 渠道通过 OpenAI Codex SDK / Codex CLI 调用 OpenAI Responses 端点
  */
 export const AGENT_COMPATIBLE_PROVIDERS: ReadonlySet<ProviderType> = new Set<ProviderType>([
   'anthropic',
@@ -67,6 +71,7 @@ export const AGENT_COMPATIBLE_PROVIDERS: ReadonlySet<ProviderType> = new Set<Pro
   'kimi-api',
   'kimi-coding',
   'minimax',
+  'codex',
 ])
 
 /**

@@ -277,6 +277,7 @@ export async function testChannel(channelId: string): Promise<ChannelTestResult>
       case 'doubao':
       case 'qwen':
       case 'custom':
+      case 'codex':
         return await testOpenAICompatible(channel.baseUrl, apiKey, proxyUrl)
       case 'google':
         return await testGoogle(channel.baseUrl, apiKey, proxyUrl)
@@ -436,6 +437,7 @@ export async function testChannelDirect(input: FetchModelsInput): Promise<Channe
       case 'doubao':
       case 'qwen':
       case 'custom':
+      case 'codex':
         return await testOpenAICompatible(input.baseUrl, input.apiKey, proxyUrl)
       case 'google':
         return await testGoogle(input.baseUrl, input.apiKey, proxyUrl)
@@ -472,6 +474,7 @@ export async function fetchModels(input: FetchModelsInput): Promise<FetchModelsR
       case 'doubao':
       case 'qwen':
       case 'custom':
+      case 'codex':
         return await fetchOpenAICompatibleModels(input.baseUrl, input.apiKey, proxyUrl)
       case 'google':
         return await fetchGoogleModels(input.baseUrl, input.apiKey, proxyUrl)

@@ -90,6 +90,8 @@ interface SystemPromptContext {
   memoryEnabled: boolean
   /** 用户选用的模型是否为 Claude 系列（影响 SubAgent 模型策略描述，缺省视为 true） */
   claudeAvailable?: boolean
+  /** 当前 Agent 后端（缺省为 'claude'，仅影响"由 X SDK 驱动"等自我描述） */
+  backend?: 'claude' | 'codex'
 }
 
 /**
@@ -108,9 +110,10 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
   const sections: string[] = []
 
   // Agent 角色定义
+  const sdkName = ctx.backend === 'codex' ? 'OpenAI Codex SDK' : 'Claude Agent SDK'
   sections.push(`# Mroma Agent
 
-你是 Mroma Agent — 一个集成在 Mroma 桌面应用中的通用AI助手，由 Claude Agent SDK 驱动。你有极强的自主性和主观能动性，可以完成任何任务，尽最大努力帮助用户。`)
+你是 Mroma Agent — 一个集成在 Mroma 桌面应用中的通用AI助手，由 ${sdkName} 驱动。你有极强的自主性和主观能动性，可以完成任何任务，尽最大努力帮助用户。`)
 
   // 工具使用指南（精简版，替代 claude_code preset 中的冗长说明）
   sections.push(`## 工具使用指南

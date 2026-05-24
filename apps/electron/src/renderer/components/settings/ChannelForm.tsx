@@ -76,7 +76,7 @@ interface ChannelFormProps {
 }
 
 /** 所有可选供应商 */
-const PROVIDER_OPTIONS: ProviderType[] = ['anthropic', 'openai', 'deepseek', 'google', 'kimi-api', 'kimi-coding', 'zhipu', 'minimax', 'doubao', 'qwen', 'custom']
+const PROVIDER_OPTIONS: ProviderType[] = ['anthropic', 'openai', 'deepseek', 'google', 'kimi-api', 'kimi-coding', 'zhipu', 'minimax', 'doubao', 'qwen', 'custom', 'codex']
 
 /** 供应商选项（用于 SettingsSelect） */
 const PROVIDER_SELECT_OPTIONS = PROVIDER_OPTIONS.map((p) => ({
@@ -97,6 +97,7 @@ const PROVIDER_CHAT_PATHS: Record<ProviderType, string> = {
   doubao: '/chat/completions',
   qwen: '/chat/completions',
   custom: '/chat/completions',
+  codex: '/responses',
 }
 
 /**

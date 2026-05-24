@@ -478,8 +478,21 @@ function collectAttachedDirectories(params: {
 
 // ===== AgentOrchestrator =====
 
+/**
+ * Adapter 工厂：根据 channel.provider 返回对应的 AgentProviderAdapter
+ *
+ * Codex 路径与 Claude 路径共享 orchestrator 编排逻辑，但底层后端不同：
+ * - Claude 协议兼容渠道走 ClaudeAgentAdapter
+ * - codex 渠道走 CodexAgentAdapter
+ */
+export type AdapterFactory = (provider: ProviderType) => AgentProviderAdapter
+
 export class AgentOrchestrator {
-  private adapter: AgentProviderAdapter
+  private adapterFactory: AdapterFactory
+  /** 已知所有可能用到的 adapter 实例（dispose 时遍历） */
+  private knownAdapters = new Set<AgentProviderAdapter>()
+  /** sessionId → 当前选用的 adapter（abort/interrupt/sendQueuedMessage 需根据 sessionId 反查） */
+  private sessionAdapters = new Map<string, AgentProviderAdapter>()
   private eventBus: AgentEventBus
   private activeSessions = new Map<string, number>()
 
@@ -492,9 +505,21 @@ export class AgentOrchestrator {
   /** 运行中会话的当前权限模式（支持运行时动态切换） */
   private sessionPermissionModes = new Map<string, MromaPermissionMode>()
 
-  constructor(adapter: AgentProviderAdapter, eventBus: AgentEventBus) {
-    this.adapter = adapter
+  constructor(adapterFactory: AdapterFactory, eventBus: AgentEventBus) {
+    this.adapterFactory = adapterFactory
     this.eventBus = eventBus
+  }
+
+  /** 根据 provider 取 adapter（同时把实例登记到 knownAdapters，便于 dispose） */
+  private getAdapter(provider: ProviderType): AgentProviderAdapter {
+    const adapter = this.adapterFactory(provider)
+    this.knownAdapters.add(adapter)
+    return adapter
+  }
+
+  /** 根据 sessionId 反查当前选用的 adapter；未注册时返回 undefined */
+  private getSessionAdapter(sessionId: string): AgentProviderAdapter | undefined {
+    return this.sessionAdapters.get(sessionId)
   }
 
   /**
@@ -510,16 +535,34 @@ export class AgentOrchestrator {
   ): Promise<Record<string, string | undefined>> {
     const DEFAULT_ANTHROPIC_URL = 'https://api.anthropic.com'
 
-    // 从 process.env 继承系统变量，但清理所有 ANTHROPIC_ 前缀的变量，
-    // 防止本地开发环境（如 ANTHROPIC_AUTH_TOKEN、ANTHROPIC_API_KEY、
-    // ANTHROPIC_BASE_URL 等）干扰 SDK 的认证和请求目标。
+    // 从 process.env 继承系统变量，但清理所有 ANTHROPIC_ / OPENAI_ 前缀的变量，
+    // 防止本地开发环境（如 ANTHROPIC_AUTH_TOKEN、OPENAI_API_KEY 等）
+    // 干扰 SDK 的认证和请求目标。
     // 即使 index.ts 启动时已清理过一次，initializeRuntime() 中的
     // loadShellEnv() 可能从 shell 配置文件（~/.zshrc 等）重新注入这些变量。
     const cleanEnv: Record<string, string | undefined> = {}
     for (const [key, value] of Object.entries(process.env)) {
-      if (!key.startsWith('ANTHROPIC_')) {
-        cleanEnv[key] = value
+      if (key.startsWith('ANTHROPIC_')) continue
+      // Codex 路径下要让 codex CLI 读不到旧的 OPENAI_*，否则会优先使用 shell 注入的 key
+      if (provider === 'codex' && (key === 'OPENAI_API_KEY' || key === 'OPENAI_BASE_URL' || key === 'CODEX_API_KEY')) continue
+      cleanEnv[key] = value
+    }
+
+    // Codex 路径：构造一份仅包含 PATH/HOME/SHELL/代理等基础变量 + OPENAI_*/CODEX_* 的环境
+    // Claude 字段（CLAUDE_*）对 codex 无意义但也无害
+    if (provider === 'codex') {
+      const codexEnv: Record<string, string | undefined> = {
+        ...cleanEnv,
+        CODEX_API_KEY: apiKey,
+        OPENAI_API_KEY: apiKey,
       }
+      if (baseUrl) codexEnv.OPENAI_BASE_URL = baseUrl
+      const codexProxyUrl = await getEffectiveProxyUrl()
+      if (codexProxyUrl) {
+        codexEnv.HTTPS_PROXY = codexProxyUrl
+        codexEnv.HTTP_PROXY = codexProxyUrl
+      }
+      return codexEnv
     }
 
     const sdkEnv: Record<string, string | undefined> = {
@@ -1003,7 +1046,15 @@ export class AgentOrchestrator {
     delete process.env.ANTHROPIC_AUTH_TOKEN
     delete process.env.ANTHROPIC_BASE_URL
     delete process.env.ANTHROPIC_CUSTOM_HEADERS
-    if (channel.provider === 'kimi-coding') {
+    if (channel.provider === 'codex') {
+      // Codex 路径：清理 ANTHROPIC_*，注入 OPENAI_* / CODEX_*
+      delete process.env.OPENAI_API_KEY
+      delete process.env.OPENAI_BASE_URL
+      delete process.env.CODEX_API_KEY
+      process.env.OPENAI_API_KEY = apiKey
+      process.env.CODEX_API_KEY = apiKey
+      if (channel.baseUrl) process.env.OPENAI_BASE_URL = channel.baseUrl
+    } else if (channel.provider === 'kimi-coding') {
       // Kimi Coding Plan：只用 Bearer + 必须带 User-Agent
       process.env.ANTHROPIC_AUTH_TOKEN = apiKey
       process.env.ANTHROPIC_CUSTOM_HEADERS = 'User-Agent: KimiCLI/1.3'
@@ -1014,7 +1065,7 @@ export class AgentOrchestrator {
       process.env.ANTHROPIC_API_KEY = apiKey
     }
     // 使用与 buildSdkEnv 相同的规范化逻辑，确保 process.env 和 sdkEnv 中的 URL 一致
-    if (channel.baseUrl && channel.baseUrl !== 'https://api.anthropic.com') {
+    if (channel.provider !== 'codex' && channel.baseUrl && channel.baseUrl !== 'https://api.anthropic.com') {
       process.env.ANTHROPIC_BASE_URL = normalizeAnthropicBaseUrlForSdk(channel.baseUrl)
     }
 
@@ -1055,13 +1106,17 @@ export class AgentOrchestrator {
     let workspace: import('@mroma/shared').AgentWorkspace | undefined
 
     try {
-      // 8. 动态导入 SDK
-      const sdk = await import('@anthropic-ai/claude-agent-sdk')
+      // 8. 动态导入 SDK（Codex 路径不需要 Claude Agent SDK）
+      const isCodex = channel.provider === 'codex'
+      const sdk = isCodex
+        ? null
+        : await import('@anthropic-ai/claude-agent-sdk')
 
       // 9. 构建 SDK query
-      const cliPath = resolveSDKCliPath()
+      // Codex 路径走 @openai/codex-sdk 子进程，cliPath 留空由 codex adapter 负责
+      const cliPath = isCodex ? '' : resolveSDKCliPath()
 
-      if (!existsSync(cliPath)) {
+      if (!isCodex && !existsSync(cliPath)) {
         const subpkg = `@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}`
         console.error(`[Agent 编排] SDK native binary 不存在: ${cliPath}`)
         reportPreflightError({
@@ -1093,7 +1148,7 @@ export class AgentOrchestrator {
       }
 
       console.log(
-        `[Agent 编排] 启动 SDK — binary: ${cliPath}, 模型: ${modelId || DEFAULT_MODEL_ID}, resume: ${existingSdkSessionId ?? '无'}`,
+        `[Agent 编排] 启动 SDK — provider: ${channel.provider}, binary: ${cliPath || 'codex(external)'}, 模型: ${modelId || DEFAULT_MODEL_ID}, resume: ${existingSdkSessionId ?? '无'}`,
       )
 
       // 确定 Agent 工作目录
@@ -1123,7 +1178,8 @@ export class AgentOrchestrator {
       // forkSourceDir 仅作为备用参考字段保留，不再影响 agentCwd。
 
       // 9.5 确保 SDK 项目设置（plansDirectory → .context）
-      {
+      //     Codex 路径不读 .claude/settings.json，跳过整段
+      if (!isCodex) {
         const claudeSettingsDir = join(agentCwd, '.claude')
         if (!existsSync(claudeSettingsDir)) mkdirSync(claudeSettingsDir, { recursive: true })
         const settingsPath = join(claudeSettingsDir, 'settings.json')
@@ -1144,6 +1200,9 @@ export class AgentOrchestrator {
           writeFileSync(settingsPath, JSON.stringify(sdkProjectSettings, null, 2))
           console.log(`[Agent 编排] 已设置 SDK settings (plansDirectory, skipWebFetchPreflight)`)
         }
+      } else {
+        // 确保 Codex 会话工作目录存在
+        if (!existsSync(agentCwd)) mkdirSync(agentCwd, { recursive: true })
       }
 
       // 9.6 直接信任已保存的 sdkSessionId，跳过 listSessions 预验证
@@ -1156,14 +1215,17 @@ export class AgentOrchestrator {
       }
 
       // 10. 构建 MCP 服务器配置 + 记忆工具 + 生图工具 + 自定义工具
-      const mcpServers = this.buildMcpServers(workspaceSlug)
-      await this.injectMemoryTools(sdk, mcpServers)
-      await this.injectNanoBananaTools(sdk, mcpServers, sessionId, agentCwd)
+      //     Codex 路径暂不支持 Claude SDK 形态的 MCP server 注入，跳过
+      const mcpServers = isCodex ? {} : this.buildMcpServers(workspaceSlug)
+      if (sdk) {
+        await this.injectMemoryTools(sdk, mcpServers)
+        await this.injectNanoBananaTools(sdk, mcpServers, sessionId, agentCwd)
 
-      // 合并外部注入的自定义 MCP 服务器（如飞书群聊工具）
-      if (customMcpServers) {
-        Object.assign(mcpServers, customMcpServers)
-        console.log(`[Agent 编排] 已合并 ${Object.keys(customMcpServers).length} 个自定义 MCP 服务器`)
+        // 合并外部注入的自定义 MCP 服务器（如飞书群聊工具）
+        if (customMcpServers) {
+          Object.assign(mcpServers, customMcpServers)
+          console.log(`[Agent 编排] 已合并 ${Object.keys(customMcpServers).length} 个自定义 MCP 服务器`)
+        }
       }
 
       // 11. 构建动态上下文和最终 prompt
@@ -1335,8 +1397,9 @@ export class AgentOrchestrator {
             this.sessionPermissionModes.set(sessionId, result.targetMode)
             planModeEntered = false
             // 同步通知 SDK 侧切换权限模式
-            if (this.adapter.setPermissionMode) {
-              this.adapter.setPermissionMode(sessionId, result.targetMode).catch((err: unknown) => {
+            const sessionAdapter = this.getSessionAdapter(sessionId)
+            if (sessionAdapter?.setPermissionMode) {
+              sessionAdapter.setPermissionMode(sessionId, result.targetMode).catch((err: unknown) => {
                 console.warn(`[Agent 编排] SDK 权限模式切换失败:`, err)
               })
             }
@@ -1438,6 +1501,7 @@ export class AgentOrchestrator {
             permissionMode: initialPermissionMode,
             memoryEnabled: (() => { const mc = getMemoryConfig(); return mc.enabled && !!mc.apiKey })(),
             claudeAvailable,
+            backend: isCodex ? 'codex' : 'claude',
           }),
         },
         resumeSessionId: existingSdkSessionId,
@@ -1576,8 +1640,13 @@ export class AgentOrchestrator {
         let shouldRetryFromError = false
 
         try {
+          // 根据 channel.provider 选择 adapter（Claude / Codex），并登记 session→adapter 映射
+          // 以便后续 abort / interrupt / queueMessage 能找到正确的 adapter
+          const sessionAdapter = this.getAdapter(channel.provider)
+          this.sessionAdapters.set(sessionId, sessionAdapter)
+
           // 获取异步迭代器（手动 .next() 以支持 Promise.race 中断）
-          const queryIterable = this.adapter.query(queryOptions)
+          const queryIterable = sessionAdapter.query(queryOptions)
           const queryIterator = queryIterable[Symbol.asyncIterator]()
 
           // 手动事件循环：Promise.race（SDKMessage vs result drain timeout）
@@ -2052,7 +2121,10 @@ export class AgentOrchestrator {
     this.sessionPermissionModes.delete(sessionId)
     this.stoppedBySessions.add(sessionId)
     this.queuedMessageUuids.delete(sessionId)
-    this.adapter.abort(sessionId)
+    const sessionAdapter = this.getSessionAdapter(sessionId)
+    if (sessionAdapter) {
+      sessionAdapter.abort(sessionId)
+    }
     console.log(`[Agent 编排] 已中止会话: ${sessionId}`)
   }
 
@@ -2071,8 +2143,9 @@ export class AgentOrchestrator {
     if (!this.activeSessions.has(sessionId)) return
     this.sessionPermissionModes.set(sessionId, mode)
     // 同步通知 SDK 侧
-    if (this.adapter.setPermissionMode) {
-      await this.adapter.setPermissionMode(sessionId, mode)
+    const sessionAdapter = this.getSessionAdapter(sessionId)
+    if (sessionAdapter?.setPermissionMode) {
+      await sessionAdapter.setPermissionMode(sessionId, mode)
     }
     console.log(`[Agent 编排] 运行中权限模式已切换: sessionId=${sessionId}, mode=${mode}`)
   }
@@ -2162,8 +2235,15 @@ export class AgentOrchestrator {
       console.log(`[Agent 编排] 正在中止所有活跃会话 (${this.activeSessions.size} 个)...`)
     }
     // 即便 activeSessions 为空，也要调 dispose 清理可能残留的 pidMap / 子进程
-    this.adapter.dispose()
+    for (const adapter of this.knownAdapters) {
+      try {
+        adapter.dispose()
+      } catch (err) {
+        console.warn('[Agent 编排] adapter.dispose() 异常:', err)
+      }
+    }
     this.activeSessions.clear()
+    this.sessionAdapters.clear()
     this.sessionPermissionModes.clear()
     this.queuedMessageUuids.clear()
   }
@@ -2189,7 +2269,8 @@ export class AgentOrchestrator {
       throw new Error(`[Agent 编排] 会话未运行，无法追加消息: ${sessionId}`)
     }
 
-    if (!this.adapter.sendQueuedMessage) {
+    const sessionAdapter = this.getSessionAdapter(sessionId)
+    if (!sessionAdapter?.sendQueuedMessage) {
       throw new Error('[Agent 编排] 当前适配器不支持流式追加消息')
     }
 
@@ -2214,15 +2295,15 @@ export class AgentOrchestrator {
       // 用户希望"立即打断当前输出并续跑新消息"：先软中断，再把消息压入通道
       // - interrupt() 让 SDK 结束当前 turn 并 yield 一个 aborted result
       // - 随后通道里的 'now' 消息会作为下一轮 turn 的用户输入被消费
-      if (opts?.interrupt && this.adapter.interruptQuery) {
+      if (opts?.interrupt && sessionAdapter.interruptQuery) {
         try {
-          await this.adapter.interruptQuery(sessionId)
+          await sessionAdapter.interruptQuery(sessionId)
         } catch (error) {
           console.warn(`[Agent 编排] 软中断失败（将继续追加消息）:`, error)
         }
       }
 
-      await this.adapter.sendQueuedMessage(sessionId, sdkMessage)
+      await sessionAdapter.sendQueuedMessage(sessionId, sdkMessage)
       console.log(`[Agent 编排] 追加消息已注入: sessionId=${sessionId}, uuid=${uuid}, interrupt=${!!opts?.interrupt}`)
 
       // 立即持久化到 JSONL

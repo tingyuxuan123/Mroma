@@ -25,8 +25,11 @@ import type {
   AgentStreamPayload,
   AgentQueueMessageInput,
   MromaPermissionMode,
+  ProviderType,
+  AgentProviderAdapter,
 } from '@mroma/shared'
 import { ClaudeAgentAdapter, scanAndKillOrphanedClaudeSubprocesses } from './adapters/claude-agent-adapter'
+import { CodexAgentAdapter } from './adapters/codex-agent-adapter'
 import { AgentEventBus } from './agent-event-bus'
 import { AgentOrchestrator } from './agent-orchestrator'
 import { getAgentSessionWorkspacePath, getWorkspaceFilesDir } from './config-paths'
@@ -34,8 +37,30 @@ import { getAgentSessionWorkspacePath, getWorkspaceFilesDir } from './config-pat
 // ===== 实例创建 =====
 
 const eventBus = new AgentEventBus()
-const adapter = new ClaudeAgentAdapter()
-const orchestrator = new AgentOrchestrator(adapter, eventBus)
+
+/**
+ * Adapter 按 provider 缓存的工厂
+ *
+ * - Anthropic 协议兼容渠道（anthropic / deepseek / kimi-api / kimi-coding / minimax）
+ *   走 ClaudeAgentAdapter（基于 @anthropic-ai/claude-agent-sdk）
+ * - codex 渠道走 CodexAgentAdapter（基于 @openai/codex-sdk）
+ * - 其他 provider 在 Agent 模式下不可用，UI 已通过 isAgentCompatibleProvider() 过滤
+ *
+ * 懒加载：实际选用某后端时才实例化对应 adapter，避免应用启动时即触发
+ * codex-sdk 的动态 import 等副作用。
+ */
+const adapterCache = new Map<'claude' | 'codex', AgentProviderAdapter>()
+function getAgentAdapter(provider: ProviderType): AgentProviderAdapter {
+  const key: 'claude' | 'codex' = provider === 'codex' ? 'codex' : 'claude'
+  let adapter = adapterCache.get(key)
+  if (!adapter) {
+    adapter = key === 'codex' ? new CodexAgentAdapter() : new ClaudeAgentAdapter()
+    adapterCache.set(key, adapter)
+  }
+  return adapter
+}
+
+const orchestrator = new AgentOrchestrator(getAgentAdapter, eventBus)
 
 /** 导出 EventBus 供飞书 Bridge 等外部服务订阅事件 */
 export { eventBus as agentEventBus }

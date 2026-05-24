@@ -4,7 +4,7 @@
   "description": "Mroma next gen ai software with general agents - Electron App",
   "main": "dist/main.cjs",
   "author": {
-    "name": "ErlichLiu",
+    "name": "tingyuxuan123",
     "email": "erlichliu@gmail.com"
   },
   "private": true,

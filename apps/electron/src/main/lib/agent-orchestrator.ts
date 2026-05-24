@@ -1084,7 +1084,7 @@ export class AgentOrchestrator {
               key: 'i',
               label: '报告问题',
               action: 'open_external',
-              payload: 'https://github.com/ErlichLiu/Mroma/issues/new',
+              payload: 'https://github.com/tingyuxuan123/Mroma/issues/new',
             },
           ],
           canRetry: false,

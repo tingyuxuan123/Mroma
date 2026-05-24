@@ -12,7 +12,7 @@ import {
   agentWorkspacesAtom,
   currentAgentWorkspaceIdAtom,
 } from '@/atoms/agent-atoms'
-import type { AgentWorkspace } from '@proma/shared'
+import type { AgentWorkspace } from '@mroma/shared'
 
 interface UseWorkspaceActionsResult {
   workspaces: AgentWorkspace[]

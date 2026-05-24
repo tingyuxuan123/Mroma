@@ -1,9 +1,9 @@
 # electron-builder 配置
 # 文档: https://www.electron.build/configuration/configuration
 
-appId: com.proma.app
-productName: Proma
-copyright: Copyright © 2024-2025 Proma
+appId: com.mroma.app
+productName: Mroma
+copyright: Copyright © 2024-2025 Mroma
 
 # Electron 版本（CI 环境 bun workspace 下无法自动检测，需显式指定）
 electronVersion: 39.5.1
@@ -46,11 +46,11 @@ files:
   # PDF 内联预览使用本地 PDF.js 资源，避免运行时依赖 CDN。
   - node_modules/pdfjs-dist/**/*
   # 排除 workspace 包的 symlink（代码已被 esbuild/Vite 打包到 dist/ 中）
-  - "!node_modules/@proma/**"
+  - "!node_modules/@mroma/**"
 
 # 通用额外资源
 extraResources:
-  # 默认 Skills 模板（首次启动时同步到 ~/.proma/default-skills/）
+  # 默认 Skills 模板（首次启动时同步到 ~/.mroma/default-skills/）
   - from: default-skills
     to: default-skills
     filter:
@@ -58,9 +58,9 @@ extraResources:
   # 教程文件（教程查看器 + 欢迎对话使用）
   - from: ../../tutorial/tutorial.md
     to: tutorial.md
-  # Proma 品牌 Logo 素材（品牌素材下载功能使用）
-  - from: resources/proma-logos
-    to: proma-logos
+  # Mroma 品牌 Logo 素材（品牌素材下载功能使用）
+  - from: resources/mroma-logos
+    to: mroma-logos
     filter:
       - "**/*"
 
@@ -75,13 +75,13 @@ mac:
   entitlements: resources/entitlements.mac.plist
   entitlementsInherit: resources/entitlements.mac.plist
   extendInfo:
-    NSMicrophoneUsageDescription: "Proma 需要访问麦克风，用于将你的语音实时转写为文本。"
+    NSMicrophoneUsageDescription: "Mroma 需要访问麦克风，用于将你的语音实时转写为文本。"
   fileAssociations:
-    - ext: proma-backup
-      name: Proma Personal Backup
+    - ext: mroma-backup
+      name: Mroma Personal Backup
       role: Editor
-    - ext: proma-share
-      name: Proma Share Package
+    - ext: mroma-share
+      name: Mroma Share Package
       role: Editor
   # 架构由 CLI 参数控制（CI 矩阵分别传 --arm64 / --x64），
   # 每个 runner 只构建其宿主架构对应的产物，与 bun 按 os/cpu 装好的
@@ -109,11 +109,11 @@ dmg:
 win:
   icon: resources/icon.ico
   fileAssociations:
-    - ext: proma-backup
-      name: Proma Personal Backup
+    - ext: mroma-backup
+      name: Mroma Personal Backup
       icon: resources/icon.ico
-    - ext: proma-share
-      name: Proma Share Package
+    - ext: mroma-share
+      name: Mroma Share Package
       icon: resources/icon.ico
   target:
     - target: nsis
@@ -146,4 +146,4 @@ linux:
 publish:
   provider: github
   owner: ErlichLiu
-  repo: Proma
+  repo: Mroma

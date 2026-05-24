@@ -23,7 +23,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { SCREENSHOT_LIMITS } from '@proma/shared'
+import { SCREENSHOT_LIMITS } from '@mroma/shared'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
@@ -107,7 +107,7 @@ function buildScreenshotPayload(editor: Editor): {
   clone.style.height = 'auto'
   clone.style.maxHeight = 'none'
   clone.style.overflow = 'visible'
-  clone.setAttribute('data-proma-screenshot-root', 'true')
+  clone.setAttribute('data-mroma-screenshot-root', 'true')
 
   // 透传主题 class（dark / theme-ocean-dark / theme-forest-dark 等），
   // 确保 globals.css 里基于这些 class 的 CSS 变量在截图侧也生效

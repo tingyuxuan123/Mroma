@@ -3,7 +3,7 @@
  *
  * 负责渠道的 CRUD 操作、API Key 加密/解密、连接测试。
  * 使用 Electron safeStorage 进行 API Key 加密（底层使用 OS 级加密）。
- * 数据持久化到 ~/.proma/channels.json。
+ * 数据持久化到 ~/.mroma/channels.json。
  */
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
@@ -20,11 +20,11 @@ import type {
   FetchModelsInput,
   FetchModelsResult,
   ProviderType,
-} from '@proma/shared'
-import { PROVIDER_DEFAULT_URLS } from '@proma/shared'
+} from '@mroma/shared'
+import { PROVIDER_DEFAULT_URLS } from '@mroma/shared'
 import { getFetchFn } from './proxy-fetch'
 import { getEffectiveProxyUrl } from './proxy-settings-service'
-import { normalizeAnthropicBaseUrl, normalizeBaseUrl, normalizeVersionedAnthropicBaseUrl } from '@proma/core'
+import { normalizeAnthropicBaseUrl, normalizeBaseUrl, normalizeVersionedAnthropicBaseUrl } from '@mroma/core'
 
 /** 当前配置版本 */
 const CONFIG_VERSION = 1
@@ -281,7 +281,7 @@ export async function testChannel(channelId: string): Promise<ChannelTestResult>
       case 'google':
         return await testGoogle(channel.baseUrl, apiKey, proxyUrl)
       default:
-        return { success: false, message: `不支持的供应商: ${channel.provider}。你可能过去使用的是 Proma 商业版，请重新下载商业版覆盖安装，当前版本为开源版本。` }
+        return { success: false, message: `不支持的供应商: ${channel.provider}。你可能过去使用的是 Mroma 商业版，请重新下载商业版覆盖安装，当前版本为开源版本。` }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : '未知错误'

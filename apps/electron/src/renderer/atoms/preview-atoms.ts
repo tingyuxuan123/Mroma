@@ -32,10 +32,10 @@ export const previewPanelOpenMapAtom = atom<Map<string, boolean>>(new Map())
 export const previewFileMapAtom = atom<Map<string, PreviewFile | null>>(new Map())
 
 /** 分栏比例（对话占比），持久化 */
-export const previewSplitRatioAtom = atomWithStorage<number>('proma-preview-split-ratio', 0.5)
+export const previewSplitRatioAtom = atomWithStorage<number>('mroma-preview-split-ratio', 0.5)
 
 /** 自动预览开关，持久化 */
-export const autoPreviewEnabledAtom = atomWithStorage<boolean>('proma-auto-preview-enabled', true)
+export const autoPreviewEnabledAtom = atomWithStorage<boolean>('mroma-auto-preview-enabled', true)
 
 /** 当前会话的预览面板是否打开（derived） */
 export const currentSessionPreviewOpenAtom = atom<boolean>((get) => {

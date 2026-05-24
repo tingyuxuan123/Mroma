@@ -89,7 +89,7 @@ export async function searchMemory(
   const result = await callApi(credentials, '/search/memory', {
     user_id: credentials.userId,
     query,
-    source: 'proma',
+    source: 'mroma',
     memory_limit_number: limit,
     include_preference: true,
     preference_limit_number: limit,
@@ -163,11 +163,11 @@ export async function addMemory(
 
   await callApi(credentials, '/add/message', {
     user_id: credentials.userId,
-    conversation_id: params.conversationId || `proma-${Date.now()}`,
+    conversation_id: params.conversationId || `mroma-${Date.now()}`,
     messages,
-    source: 'proma',
-    tags: params.tags ?? ['proma'],
+    source: 'mroma',
+    tags: params.tags ?? ['mroma'],
     async_mode: true,
-    info: { source: 'proma-builtin' },
+    info: { source: 'mroma-builtin' },
   })
 }

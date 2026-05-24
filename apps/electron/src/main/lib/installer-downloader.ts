@@ -19,7 +19,7 @@ import {
   type InstallerDownloadResult,
   type InstallerProgressPayload,
   type InstallerSource,
-} from '@proma/shared'
+} from '@mroma/shared'
 
 /** 已注册的可取消下载：key -> cancel() */
 const activeDownloads = new Map<string, () => void>()
@@ -28,7 +28,7 @@ const activeDownloads = new Map<string, () => void>()
  * 构造安装包的本地缓存目录
  */
 function getInstallerDir(): string {
-  return path.join(app.getPath('temp'), 'proma-installers')
+  return path.join(app.getPath('temp'), 'mroma-installers')
 }
 
 /**

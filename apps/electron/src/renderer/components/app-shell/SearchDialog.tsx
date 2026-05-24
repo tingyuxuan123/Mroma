@@ -28,7 +28,7 @@ import {
 } from '@/atoms/agent-atoms'
 import { activeViewAtom } from '@/atoms/active-view'
 import { useOpenSession } from '@/hooks/useOpenSession'
-import type { MessageSearchResult, AgentMessageSearchResult } from '@proma/shared'
+import type { MessageSearchResult, AgentMessageSearchResult } from '@mroma/shared'
 
 /** 标题搜索结果项 */
 interface TitleResult {

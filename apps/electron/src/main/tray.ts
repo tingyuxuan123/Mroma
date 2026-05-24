@@ -23,8 +23,8 @@ function getTrayIconPath(): string {
   // dev: __dirname/resources（build:resources 拷贝产物）
   // prod: process.resourcesPath（electron-builder extraResources 产物）
   const resourcesDir = app.isPackaged
-    ? join(process.resourcesPath, 'proma-logos')
-    : join(__dirname, 'resources/proma-logos')
+    ? join(process.resourcesPath, 'mroma-logos')
+    : join(__dirname, 'resources/mroma-logos')
   return join(resourcesDir, 'iconTemplate.png')
 }
 
@@ -101,12 +101,12 @@ function buildTrayMenu(actions: TrayActions): Menu {
     },
     { type: 'separator' },
     {
-      label: '打开 Proma',
+      label: '打开 Mroma',
       click: () => actions.showMainWindow(),
     },
     { type: 'separator' },
     {
-      label: '退出 Proma',
+      label: '退出 Mroma',
       click: () => {
         app.quit()
       },
@@ -148,7 +148,7 @@ export function createTray(actionsInput?: Partial<TrayActions>): Tray | null {
     tray = new Tray(image)
 
     // 设置 tooltip
-    tray.setToolTip('Proma')
+    tray.setToolTip('Mroma')
 
     updateTrayMenu(actions)
 

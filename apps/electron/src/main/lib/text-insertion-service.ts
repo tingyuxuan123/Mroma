@@ -152,7 +152,7 @@ async function triggerSystemPaste(): Promise<void> {
 
 async function triggerMacPaste(): Promise<void> {
   if (!systemPreferences.isTrustedAccessibilityClient(true)) {
-    throw new Error('需要在 macOS 系统设置中允许 Proma 使用辅助功能')
+    throw new Error('需要在 macOS 系统设置中允许 Mroma 使用辅助功能')
   }
 
   await execFileAsync(
@@ -204,7 +204,7 @@ $signature = @"
 using System;
 using System.Runtime.InteropServices;
 
-public static class PromaKeyboardInput
+public static class MromaKeyboardInput
 {
     private const int INPUT_KEYBOARD = 1;
     private const uint KEYEVENTF_KEYUP = 0x0002;
@@ -266,5 +266,5 @@ public static class PromaKeyboardInput
 "@
 
 Add-Type -TypeDefinition $signature
-[PromaKeyboardInput]::Paste()
+[MromaKeyboardInput]::Paste()
 `

@@ -11,7 +11,7 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
 import { Loader2 } from 'lucide-react'
-import { CodeBlock } from '@proma/ui'
+import { CodeBlock } from '@mroma/ui'
 
 /** 视频块信息 */
 interface VideoBlock {

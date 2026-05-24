@@ -1,8 +1,8 @@
 {
-  "name": "@proma/shared",
+  "name": "@mroma/shared",
   "version": "0.1.19",
   "license": "Apache-2.0",
-  "description": "Shared types, configs and utilities for proma",
+  "description": "Shared types, configs and utilities for mroma",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",

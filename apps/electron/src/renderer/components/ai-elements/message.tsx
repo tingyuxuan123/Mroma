@@ -1,7 +1,7 @@
 /**
  * AI Elements - 消息组件原语
  *
- * 简化迁移自 proma-frontend 的 ai-elements/message.tsx，
+ * 简化迁移自 mroma-frontend 的 ai-elements/message.tsx，
  * 保留核心消息展示组件，适配 Electron + Jotai 架构。
  *
  * 包含：
@@ -33,10 +33,10 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { LoadingIndicator } from '@/components/ui/loading-indicator'
-import { CodeBlock, MermaidBlock } from '@proma/ui'
+import { CodeBlock, MermaidBlock } from '@mroma/ui'
 import { FilePathChip, isAbsoluteFilePath, isRelativeFilePath } from './file-path-chip'
 import type { HTMLAttributes, ComponentProps, ReactNode } from 'react'
-import type { FileAttachment } from '@proma/shared'
+import type { FileAttachment } from '@mroma/shared'
 
 // ===== Message 根容器 =====
 

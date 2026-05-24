@@ -12,7 +12,7 @@ import { ExternalLink, Eye, EyeOff, Loader2, CheckCircle2, XCircle } from 'lucid
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
-import type { MemoryConfig } from '@proma/shared'
+import type { MemoryConfig } from '@mroma/shared'
 import { SettingsSection, SettingsCard } from './primitives'
 import { chatToolsAtom } from '@/atoms/chat-tool-atoms'
 
@@ -27,7 +27,7 @@ async function refreshChatTools(setter: (tools: Awaited<ReturnType<typeof window
 }
 
 export function MemorySettings(): React.ReactElement {
-  const [config, setConfig] = React.useState<MemoryConfig>({ enabled: false, apiKey: '', userId: 'proma-user' })
+  const [config, setConfig] = React.useState<MemoryConfig>({ enabled: false, apiKey: '', userId: 'mroma-user' })
   const [saving, setSaving] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const setChatTools = useSetAtom(chatToolsAtom)

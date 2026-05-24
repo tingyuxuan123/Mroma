@@ -7,7 +7,7 @@
 
 // ===== 飞书 Bot 配置 =====
 
-/** 飞书 Bot 应用配置（持久化到 ~/.proma/feishu.json）— 旧格式，向后兼容 */
+/** 飞书 Bot 应用配置（持久化到 ~/.mroma/feishu.json）— 旧格式，向后兼容 */
 export interface FeishuConfig {
   /** 是否启用飞书集成 */
   enabled: boolean
@@ -50,7 +50,7 @@ export interface FeishuBotConfig {
   defaultModelId?: string
 }
 
-/** 多 Bot 配置文件（~/.proma/feishu.json 新格式） */
+/** 多 Bot 配置文件（~/.mroma/feishu.json 新格式） */
 export interface FeishuMultiBotConfig {
   version: 2
   bots: FeishuBotConfig[]
@@ -118,7 +118,7 @@ export interface FeishuUpdateBindingInput {
   sessionId?: string
 }
 
-/** 飞书聊天 → Proma 会话绑定（内存态，不持久化） */
+/** 飞书聊天 → Mroma 会话绑定（内存态，不持久化） */
 export interface FeishuChatBinding {
   /** 飞书 chat_id（单聊或群聊） */
   chatId: string
@@ -126,7 +126,7 @@ export interface FeishuChatBinding {
   botId: string
   /** 飞书用户 open_id */
   userId: string
-  /** 绑定的 Proma 会话 ID */
+  /** 绑定的 Mroma 会话 ID */
   sessionId: string
   /** 绑定的工作区 ID */
   workspaceId: string

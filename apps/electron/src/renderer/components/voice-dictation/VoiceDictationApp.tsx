@@ -317,7 +317,7 @@ export function VoiceDictationApp(): React.ReactElement {
     const permission = await window.electronAPI.checkMicrophonePermission()
     if (permission.status === 'denied') {
       setStatus('error')
-      setMessage('麦克风权限已被系统阻止，请在系统设置中允许 Proma 访问麦克风')
+      setMessage('麦克风权限已被系统阻止，请在系统设置中允许 Mroma 访问麦克风')
       return
     }
     if (permission.status === 'not-determined') {
@@ -468,7 +468,7 @@ export function VoiceDictationApp(): React.ReactElement {
                     : <Mic className="size-4" />}
             </div>
             <div className="min-w-0">
-              <div className="truncate text-sm font-medium text-foreground">Proma 语音输入</div>
+              <div className="truncate text-sm font-medium text-foreground">Mroma 语音输入</div>
               <div className="truncate text-xs text-muted-foreground">{message}</div>
             </div>
           </div>
@@ -501,7 +501,7 @@ export function VoiceDictationApp(): React.ReactElement {
           <div className="overflow-hidden rounded-lg bg-muted/45">
             <div ref={hintBarRef} className="flex min-h-8 shrink-0 items-center justify-between gap-3 px-3 py-1.5 text-xs leading-4 text-muted-foreground">
               <span className="truncate">
-                Ctrl+～ 停止 · 外部写入光标 · Proma 激活时写入 Chat / Agent
+                Ctrl+～ 停止 · 外部写入光标 · Mroma 激活时写入 Chat / Agent
               </span>
               {commitResult && (
                 <span className="flex shrink-0 items-center gap-1.5">
@@ -550,7 +550,7 @@ function getMicrophoneErrorMessage(error: unknown): string {
     switch (error.name) {
       case 'NotAllowedError':
       case 'PermissionDeniedError':
-        return '麦克风权限被系统阻止，请在 Windows 设置 > 隐私和安全性 > 麦克风中允许 Proma 访问'
+        return '麦克风权限被系统阻止，请在 Windows 设置 > 隐私和安全性 > 麦克风中允许 Mroma 访问'
       case 'NotFoundError':
       case 'DevicesNotFoundError':
         return '没有检测到可用麦克风，请检查输入设备是否已连接并启用'

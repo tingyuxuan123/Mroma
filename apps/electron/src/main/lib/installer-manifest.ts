@@ -1,14 +1,14 @@
 /**
  * Installer Manifest 客户端
  *
- * 从 proma-api 的 /api/v1/installers/manifest 接口拉取第三方安装包清单，
+ * 从 mroma-api 的 /api/v1/installers/manifest 接口拉取第三方安装包清单，
  * 带 5 分钟缓存和内置 fallback——断网或接口不可用时至少能拿到官方上游 URL。
  */
 
-import type { InstallerManifest, InstallerSource } from '@proma/shared'
+import type { InstallerManifest, InstallerSource } from '@mroma/shared'
 
-const PROMA_API_BASE = 'https://api.proma.cool'
-const MANIFEST_URL = `${PROMA_API_BASE}/api/v1/installers/manifest`
+const MROMA_API_BASE = 'https://api.mroma.cool'
+const MANIFEST_URL = `${MROMA_API_BASE}/api/v1/installers/manifest`
 const CACHE_TTL_MS = 5 * 60 * 1000
 
 interface ManifestCache {
@@ -87,7 +87,7 @@ export async function fetchInstallerManifest(force = false): Promise<InstallerMa
     const response = await fetch(MANIFEST_URL, {
       headers: {
         'Accept': 'application/json',
-        'User-Agent': 'Proma-Desktop-App',
+        'User-Agent': 'Mroma-Desktop-App',
       },
     })
 

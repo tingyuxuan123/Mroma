@@ -37,7 +37,7 @@ import type {
   SDKUserMessage,
   SDKToolResultBlock,
   SDKSystemMessage,
-} from '@proma/shared'
+} from '@mroma/shared'
 
 // ===== useToolResult Hook =====
 

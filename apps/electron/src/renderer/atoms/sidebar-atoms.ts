@@ -15,7 +15,7 @@ export const sidebarViewModeAtom = atom<SidebarViewMode>('active')
 
 /** 工作区列表高度（px），用户可拖拽调整，持久化到 localStorage */
 export const workspaceListHeightAtom = atomWithStorage<number>(
-  'proma-workspace-list-height',
+  'mroma-workspace-list-height',
   120,
 )
 
@@ -26,6 +26,6 @@ export const workspaceListHeightAtom = atomWithStorage<number>(
  * 负值表示未初始化，运行时首次渲染按容器高度的 40% 计算初始值。
  */
 export const agentSidebarTopHeightAtom = atomWithStorage<number>(
-  'proma-agent-sidebar-top-height',
+  'mroma-agent-sidebar-top-height',
   -1,
 )

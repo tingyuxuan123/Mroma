@@ -174,7 +174,7 @@ export const DEFAULT_SHORTCUTS: ShortcutDefinition[] = [
   {
     id: 'show-main-window',
     name: '显示主窗口',
-    description: '显示并聚焦 Proma 主窗口',
+    description: '显示并聚焦 Mroma 主窗口',
     defaultMac: 'Cmd+Shift+P',
     defaultWin: 'Ctrl+Shift+P',
     category: 'global',

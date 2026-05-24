@@ -50,13 +50,13 @@ import type {
   SDKToolUseBlock,
   SDKToolResultBlock,
   RecoveryAction,
-} from '@proma/shared'
+} from '@mroma/shared'
 import {
   THINKING_SIGNATURE_ERROR_CODE,
   THINKING_SIGNATURE_ERROR_TITLE,
   THINKING_SIGNATURE_ERROR_MESSAGE,
   isThinkingSignatureError,
-} from '@proma/shared'
+} from '@mroma/shared'
 import type { ToolActivity } from '@/atoms/agent-atoms'
 
 // ===== SDKMessageRenderer Props =====
@@ -1210,7 +1210,7 @@ let fallbackIdCounter = 0
 export function getGroupId(group: MessageGroup): string {
   if (group.type === 'user') {
     if (group.message.uuid) return group.message.uuid
-    const stableKey = (group.message as unknown as Record<string, unknown>)._promaStableKey
+    const stableKey = (group.message as unknown as Record<string, unknown>)._mromaStableKey
     if (typeof stableKey === 'string') return stableKey
     // 没有 uuid：使用基于 message 对象引用的缓存 ID（message 引用在重渲染间稳定）
     if (!messageIdCache.has(group.message)) {
@@ -1227,7 +1227,7 @@ export function getGroupId(group: MessageGroup): string {
   // assistant-turn：取首条 assistant 消息的 uuid
   const first = group.assistantMessages[0]
   if (first?.uuid) return first.uuid
-  const stableKey = first ? (first as unknown as Record<string, unknown>)._promaStableKey : undefined
+  const stableKey = first ? (first as unknown as Record<string, unknown>)._mromaStableKey : undefined
   if (typeof stableKey === 'string') return stableKey
   // 没有 uuid：使用基于首条 assistant message 对象引用的缓存 ID
   if (first) {

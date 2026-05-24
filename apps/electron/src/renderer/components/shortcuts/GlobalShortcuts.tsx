@@ -170,7 +170,7 @@ export function GlobalShortcuts(): null {
   useShortcut(
     'clear-context',
     useCallback(() => {
-      window.dispatchEvent(new CustomEvent('proma:clear-context'))
+      window.dispatchEvent(new CustomEvent('mroma:clear-context'))
     }, []),
   )
 
@@ -178,7 +178,7 @@ export function GlobalShortcuts(): null {
   useShortcut(
     'focus-input',
     useCallback(() => {
-      window.dispatchEvent(new CustomEvent('proma:focus-input'))
+      window.dispatchEvent(new CustomEvent('mroma:focus-input'))
     }, []),
   )
 
@@ -186,7 +186,7 @@ export function GlobalShortcuts(): null {
   useShortcut(
     'stop-generation',
     useCallback(() => {
-      window.dispatchEvent(new CustomEvent('proma:stop-generation'))
+      window.dispatchEvent(new CustomEvent('mroma:stop-generation'))
     }, []),
   )
 
@@ -291,7 +291,7 @@ export function GlobalShortcuts(): null {
           store.set(currentConversationIdAtom, meta.id)
 
           // 处理附件：保存到磁盘，收集 FileAttachment[]
-          const savedAttachments: import('@proma/shared').FileAttachment[] = []
+          const savedAttachments: import('@mroma/shared').FileAttachment[] = []
           if (data.files && data.files.length > 0) {
             for (const file of data.files) {
               if (!file.base64) {
@@ -336,19 +336,19 @@ export function GlobalShortcuts(): null {
     return cleanup
   }, [store])
 
-  // ===== 语音输入 → 写入当前 Proma 输入框 =====
+  // ===== 语音输入 → 写入当前 Mroma 输入框 =====
 
   useEffect(() => {
     const cleanup = window.electronAPI.onVoiceDictationInsertText(({ text }) => {
       const trimmed = text.trim()
       if (!trimmed) return
 
-      const insertedAtCursor = !window.dispatchEvent(new CustomEvent('proma:insert-voice-dictation-text', {
+      const insertedAtCursor = !window.dispatchEvent(new CustomEvent('mroma:insert-voice-dictation-text', {
         cancelable: true,
         detail: { text: trimmed },
       }))
       if (insertedAtCursor) {
-        window.dispatchEvent(new CustomEvent('proma:focus-input'))
+        window.dispatchEvent(new CustomEvent('mroma:focus-input'))
         return
       }
 
@@ -381,7 +381,7 @@ export function GlobalShortcuts(): null {
           map.delete(sessionId)
           return map
         })
-        window.dispatchEvent(new CustomEvent('proma:focus-input'))
+        window.dispatchEvent(new CustomEvent('mroma:focus-input'))
         return
       }
 
@@ -395,7 +395,7 @@ export function GlobalShortcuts(): null {
           map.set(conversationId, current ? `${current}\n${trimmed}` : trimmed)
           return map
         })
-        window.dispatchEvent(new CustomEvent('proma:focus-input'))
+        window.dispatchEvent(new CustomEvent('mroma:focus-input'))
       }
     })
     return cleanup

@@ -2,7 +2,7 @@
  * 主题状态原子
  *
  * 管理应用主题模式（浅色/深色/跟随系统/特殊风格）和特殊风格。
- * - themeModeAtom: 用户选择的主题模式，持久化到 ~/.proma/settings.json
+ * - themeModeAtom: 用户选择的主题模式，持久化到 ~/.mroma/settings.json
  * - themeStyleAtom: 特殊风格主题
  * - systemIsDarkAtom: 系统当前是否为深色模式
  * - resolvedThemeAtom: 派生的最终主题（light | dark）
@@ -14,8 +14,8 @@ import { atom } from 'jotai'
 import type { ThemeMode, ThemeStyle } from '../../types'
 
 /** localStorage 缓存键 */
-const THEME_CACHE_KEY = 'proma-theme-mode'
-const THEME_STYLE_CACHE_KEY = 'proma-theme-style'
+const THEME_CACHE_KEY = 'mroma-theme-mode'
+const THEME_STYLE_CACHE_KEY = 'mroma-theme-style'
 
 /**
  * 从 localStorage 读取缓存的主题模式

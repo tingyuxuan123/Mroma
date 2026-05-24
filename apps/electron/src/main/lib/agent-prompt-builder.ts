@@ -5,11 +5,11 @@
  *
  * 设计策略：
  * - 静态 system prompt（buildSystemPrompt）：追加到 claude_code preset 之后的自定义系统提示词
- *   preset 提供基础环境信息（platform/shell/OS/git/model 等），本模块追加 Proma 特有的指令
+ *   preset 提供基础环境信息（platform/shell/OS/git/model 等），本模块追加 Mroma 特有的指令
  * - 动态 per-message 上下文（buildDynamicContext）：注入到用户消息前，每次实时读取磁盘
  */
 
-import type { PromaPermissionMode, AgentDefinition } from '@proma/shared'
+import type { MromaPermissionMode, AgentDefinition } from '@mroma/shared'
 import { getUserProfile } from './user-profile-service'
 import { getWorkspaceMcpConfig, getWorkspaceSkills } from './agent-workspace-manager'
 import { getConfigDirName } from './config-paths'
@@ -85,7 +85,7 @@ interface SystemPromptContext {
   workspaceName?: string
   workspaceSlug?: string
   sessionId: string
-  permissionMode: PromaPermissionMode
+  permissionMode: MromaPermissionMode
   /** 记忆服务是否已启用且配置了 API Key */
   memoryEnabled: boolean
   /** 用户选用的模型是否为 Claude 系列（影响 SubAgent 模型策略描述，缺省视为 true） */
@@ -98,7 +98,7 @@ interface SystemPromptContext {
  * 构建追加到 claude_code preset 之后的自定义系统提示词。
  *
  * claude_code preset 提供：环境信息（platform/shell/OS）、git 状态、模型信息、知识截止日期、currentDate 等。
- * 本函数追加：Proma Agent 角色定义、工具使用指南、SubAgent 策略、工作区信息、记忆系统等。
+ * 本函数追加：Mroma Agent 角色定义、工具使用指南、SubAgent 策略、工作区信息、记忆系统等。
  * 工具（Read/Write/Edit/Bash 等）由 SDK 独立注册，不受 systemPrompt 影响。
  */
 export function buildSystemPrompt(ctx: SystemPromptContext): string {
@@ -108,9 +108,9 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
   const sections: string[] = []
 
   // Agent 角色定义
-  sections.push(`# Proma Agent
+  sections.push(`# Mroma Agent
 
-你是 Proma Agent — 一个集成在 Proma 桌面应用中的通用AI助手，由 Claude Agent SDK 驱动。你有极强的自主性和主观能动性，可以完成任何任务，尽最大努力帮助用户。`)
+你是 Mroma Agent — 一个集成在 Mroma 桌面应用中的通用AI助手，由 Claude Agent SDK 驱动。你有极强的自主性和主观能动性，可以完成任何任务，尽最大努力帮助用户。`)
 
   // 工具使用指南（精简版，替代 claude_code preset 中的冗长说明）
   sections.push(`## 工具使用指南
@@ -255,7 +255,7 @@ Agent 工具支持 \`model\` 参数（可选值：\`sonnet\` / \`opus\` / \`haik
 - 工作区根目录: ~/${configDirName}/agent-workspaces/${ctx.workspaceSlug}/
 - 当前会话目录（cwd）: ~/${configDirName}/agent-workspaces/${ctx.workspaceSlug}/${ctx.sessionId}/
 - MCP 配置: ~/${configDirName}/agent-workspaces/${ctx.workspaceSlug}/mcp.json（顶层 key 是 \`servers\`）
-- Skills 目录: ~/${configDirName}/agent-workspaces/${ctx.workspaceSlug}/skills/（Proma 只从此目录加载 skill；npx skills add 等外部命令安装到 .agents/skills/ 不会被加载，需手动 mv 到此目录）
+- Skills 目录: ~/${configDirName}/agent-workspaces/${ctx.workspaceSlug}/skills/（Mroma 只从此目录加载 skill；npx skills add 等外部命令安装到 .agents/skills/ 不会被加载，需手动 mv 到此目录）
 
 ### .context 目录层级
 
@@ -393,7 +393,7 @@ Agent 工具支持 \`model\` 参数（可选值：\`sonnet\` / \`opus\` / \`haik
 
 1. 优先使用中文回复，保留技术术语
 2. 与用户确认破坏性操作后再执行
-3. 自称 Proma Agent，你会非常积极的维护有价值的文档，并总能在交互中帮助用户改善用法或者沉淀/更新 Skills 等来优化未来的工作流程和表现，以及更趋近于自动化完成任务，你区分的清楚哪些是工作区级别哪些是会话级别的
+3. 自称 Mroma Agent，你会非常积极的维护有价值的文档，并总能在交互中帮助用户改善用法或者沉淀/更新 Skills 等来优化未来的工作流程和表现，以及更趋近于自动化完成任务，你区分的清楚哪些是工作区级别哪些是会话级别的
 4. 日常交流简洁直接；但当任务的交付物本身就是文本输出时（分析报告、文档、方案对比），完整输出内容，不要压缩
 5. **会话恢复**：每次收到新任务时，先检查会话级和工作区级两个 \`.context/\` 目录（note.md、todo.md）以及当前目录的 CLAUDE.md
 6. **自检习惯**：复杂任务执行过程中，定期回顾 CLAUDE.md 和两级 .context/ 中的内容，确保行为与已记录的规范和计划保持一致`)

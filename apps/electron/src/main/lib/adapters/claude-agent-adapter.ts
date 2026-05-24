@@ -17,13 +17,13 @@ import type {
   SdkBeta,
   JsonSchemaOutputFormat,
   SDKMessage,
-  PromaPermissionMode,
-} from '@proma/shared'
+  MromaPermissionMode,
+} from '@mroma/shared'
 import {
   THINKING_SIGNATURE_ERROR_MESSAGE,
   THINKING_SIGNATURE_ERROR_TITLE,
   isThinkingSignatureError as matchesThinkingSignatureError,
-} from '@proma/shared'
+} from '@mroma/shared'
 import type { CanUseToolOptions, PermissionResult } from '../agent-permission-service'
 import { TRANSIENT_NETWORK_PATTERN } from '../error-patterns'
 import { spawn as spawnChild, execFileSync } from 'node:child_process'
@@ -122,8 +122,8 @@ export interface ClaudeAgentQueryOptions extends AgentQueryInput {
   env: Record<string, string | undefined>
   /** 最大轮次（undefined = SDK 默认） */
   maxTurns?: number
-  /** SDK 权限模式（Proma 当前三种模式直接映射 SDK 原生模式） */
-  sdkPermissionMode: PromaPermissionMode
+  /** SDK 权限模式（Mroma 当前三种模式直接映射 SDK 原生模式） */
+  sdkPermissionMode: MromaPermissionMode
   /** 是否跳过权限检查 */
   allowDangerouslySkipPermissions: boolean
   /** 自定义权限处理器（匹配 SDK CanUseTool 签名） */
@@ -193,7 +193,7 @@ export interface ClaudeAgentQueryOptions extends AgentQueryInput {
 const FRIENDLY_ERROR_MESSAGES: Array<{ pattern: RegExp; message: string }> = [
   {
     pattern: /not logged in|please run \/login/i,
-    message: '请检查是否选择了正确的 Proma 供应渠道和模型',
+    message: '请检查是否选择了正确的 Mroma 供应渠道和模型',
   },
   {
     pattern: /validation error/i,

@@ -2,11 +2,11 @@
  * 联网搜索工具模块（Chat 模式）
  *
  * 基于 Tavily Search API 提供实时联网搜索能力。
- * 凭据存储在 ~/.proma/chat-tools.json 的 toolCredentials 中。
+ * 凭据存储在 ~/.mroma/chat-tools.json 的 toolCredentials 中。
  */
 
-import type { ToolCall, ToolResult, ToolDefinition } from '@proma/core'
-import type { ChatToolMeta } from '@proma/shared'
+import type { ToolCall, ToolResult, ToolDefinition } from '@mroma/core'
+import type { ChatToolMeta } from '@mroma/shared'
 import { getToolCredentials } from '../chat-tool-config'
 
 // ===== 工具元数据 =====

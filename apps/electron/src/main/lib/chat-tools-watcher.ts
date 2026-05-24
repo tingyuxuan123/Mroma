@@ -1,7 +1,7 @@
 /**
  * Chat 工具配置文件监听器
  *
- * 监听 ~/.proma/chat-tools.json 的变化，
+ * 监听 ~/.mroma/chat-tools.json 的变化，
  * 当 Agent 通过文件系统修改配置后自动通知渲染进程刷新工具列表。
  *
  * 使用 node:fs.watch + debounce 防抖，避免高频写入导致多次通知。
@@ -10,7 +10,7 @@
 import { watch, existsSync } from 'node:fs'
 import type { FSWatcher } from 'node:fs'
 import { BrowserWindow } from 'electron'
-import { CHAT_TOOL_IPC_CHANNELS } from '@proma/shared'
+import { CHAT_TOOL_IPC_CHANNELS } from '@mroma/shared'
 import { getChatToolsConfigPath } from './config-paths'
 
 /** debounce 延迟（ms） */

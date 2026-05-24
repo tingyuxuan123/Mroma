@@ -2,11 +2,11 @@
  * 全局代理配置服务
  *
  * 管理应用的全局代理配置，支持系统代理自动检测和手动配置。
- * 配置文件存储在 ~/.proma/proxy-settings.json。
+ * 配置文件存储在 ~/.mroma/proxy-settings.json。
  */
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import type { ProxyConfig } from '@proma/shared'
+import type { ProxyConfig } from '@mroma/shared'
 import { getProxySettingsPath } from './config-paths'
 import { detectSystemProxy } from './system-proxy-detector'
 

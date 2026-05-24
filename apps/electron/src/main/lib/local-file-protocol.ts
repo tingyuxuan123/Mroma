@@ -1,7 +1,7 @@
 /**
  * Token-gated local file protocol support for inline previews.
  *
- * The renderer never receives raw proma-file:// absolute paths. Main process
+ * The renderer never receives raw mroma-file:// absolute paths. Main process
  * code registers an already-authorized file or directory and gets back an
  * opaque URL that the protocol handler can resolve.
  */
@@ -62,18 +62,18 @@ function registerEntry(path: string, isDirectory: boolean): string {
 
   const token = randomUUID()
   registeredEntries.set(token, { root, isDirectory, createdAt: Date.now() })
-  return `proma-file://${token}`
+  return `mroma-file://${token}`
 }
 
-export function registerPromaFilePath(path: string): string {
+export function registerMromaFilePath(path: string): string {
   return registerEntry(path, false)
 }
 
-export function registerPromaDirectoryPath(path: string): string {
+export function registerMromaDirectoryPath(path: string): string {
   return registerEntry(path, true)
 }
 
-export function handlePromaFileRequest(request: Request): Promise<Response> | Response {
+export function handleMromaFileRequest(request: Request): Promise<Response> | Response {
   let url: URL
   try {
     url = new URL(request.url)

@@ -8,7 +8,7 @@
  *   左侧：Paperclip 附件按钮、ModelSelector、ThinkingButton、SpeechButton、ContextSettingsPopover、ClearContextButton
  *   右侧：Send/Stop 按钮
  * - 拖放文件支持（onDragOver/onDragLeave/onDrop）
- * - 监听 proma:clear-context 和 proma:focus-input 自定义事件
+ * - 监听 mroma:clear-context 和 mroma:focus-input 自定义事件
  * - 卡片式容器样式
  */
 
@@ -41,7 +41,7 @@ import {
 import { FeishuNotifyToggle } from './FeishuNotifyToggle'
 import { cn } from '@/lib/utils'
 import { fileToBase64, formatFileNames } from '@/lib/file-utils'
-import { MAX_ATTACHMENT_SIZE } from '@proma/shared'
+import { MAX_ATTACHMENT_SIZE } from '@mroma/shared'
 import { sendWithCmdEnterAtom } from '@/atoms/shortcut-atoms'
 import { toast } from 'sonner'
 
@@ -249,8 +249,8 @@ export function ChatInput({ conversationId, streaming, pendingAttachments, onSet
     const handler = (): void => {
       onClearContext?.()
     }
-    window.addEventListener('proma:clear-context', handler)
-    return () => window.removeEventListener('proma:clear-context', handler)
+    window.addEventListener('mroma:clear-context', handler)
+    return () => window.removeEventListener('mroma:clear-context', handler)
   }, [onClearContext])
 
   // 监听快捷键系统分发的 focus-input 事件（Cmd+L）
@@ -260,8 +260,8 @@ export function ChatInput({ conversationId, streaming, pendingAttachments, onSet
       const proseMirror = document.querySelector('[data-input-mode="chat"] .ProseMirror') as HTMLElement | null
       proseMirror?.focus()
     }
-    window.addEventListener('proma:focus-input', handler)
-    return () => window.removeEventListener('proma:focus-input', handler)
+    window.addEventListener('mroma:focus-input', handler)
+    return () => window.removeEventListener('mroma:focus-input', handler)
   }, [])
 
   const toolbarItems = React.useMemo<ToolbarItem[]>(() => [

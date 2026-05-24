@@ -8,8 +8,8 @@
  */
 
 import { BrowserWindow } from 'electron'
-import type { AgentStreamPayload } from '@proma/shared'
-import { AGENT_IPC_CHANNELS } from '@proma/shared'
+import type { AgentStreamPayload } from '@mroma/shared'
+import { AGENT_IPC_CHANNELS } from '@mroma/shared'
 import { createAgentSession, listAgentSessions, getAgentSessionMeta } from './agent-session-manager'
 import {
   listAgentWorkspacesByUpdatedAt,
@@ -265,7 +265,7 @@ export class BridgeCommandHandler {
     const settings = getSettings()
     const channelId = settings.agentChannelId
     if (!channelId) {
-      await this.send(chatId, '请先在 Proma 设置中选择 Agent 渠道。', contextData)
+      await this.send(chatId, '请先在 Mroma 设置中选择 Agent 渠道。', contextData)
       return
     }
 
@@ -554,7 +554,7 @@ export class BridgeCommandHandler {
     const settings = getSettings()
     const channelId = settings.agentChannelId
     if (!channelId) {
-      await this.send(chatId, '请先在 Proma 设置中选择 Agent 渠道。', contextData)
+      await this.send(chatId, '请先在 Mroma 设置中选择 Agent 渠道。', contextData)
       return
     }
 
@@ -564,7 +564,7 @@ export class BridgeCommandHandler {
     if (!binding) {
       const result = this.ensureBinding(chatId)
       if (!result) {
-        await this.send(chatId, '请先在 Proma 设置中选择 Agent 渠道。', contextData)
+        await this.send(chatId, '请先在 Mroma 设置中选择 Agent 渠道。', contextData)
         return
       }
       binding = result

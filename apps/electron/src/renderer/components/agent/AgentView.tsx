@@ -95,8 +95,8 @@ import { useOpenSession } from '@/hooks/useOpenSession'
 import { AgentSessionProvider } from '@/contexts/session-context'
 import { draftSessionIdsAtom } from '@/atoms/draft-session-atoms'
 import { sendWithCmdEnterAtom } from '@/atoms/shortcut-atoms'
-import type { AgentSendInput, AgentPendingFile, FileDialogLargeFile, ModelOption, SDKMessage } from '@proma/shared'
-import { MAX_ATTACHMENT_SIZE } from '@proma/shared'
+import type { AgentSendInput, AgentPendingFile, FileDialogLargeFile, ModelOption, SDKMessage } from '@mroma/shared'
+import { MAX_ATTACHMENT_SIZE } from '@mroma/shared'
 import { fileToBase64, formatFileNames, getFileParentPath } from '@/lib/file-utils'
 
 /** 稳定的空 SDKMessage 数组引用，避免 ?? [] 每次创建新引用 */
@@ -162,7 +162,7 @@ function getUserTextFromSDKMessage(message: SDKMessage): string | null {
 // ===== 思考模式 Hover Popover =====
 
 interface AgentThinkingPopoverProps {
-  agentThinking: import('@proma/shared').ThinkingConfig | undefined
+  agentThinking: import('@mroma/shared').ThinkingConfig | undefined
   onToggle: () => void
 }
 
@@ -461,9 +461,9 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
 
   // 检查 Agent 渠道列表中是否存在可用的模型（渠道 enabled + 模型 enabled）
   const hasAvailableModel = React.useMemo(() => {
-    // Proma 官方渠道（商业版）：只要 enabled 且有可用模型，直接视为可用
-    const promaOfficial = globalChannels.find((c) => c.id === 'proma-official')
-    if (promaOfficial?.enabled && promaOfficial.models.some((m) => m.enabled)) return true
+    // Mroma 官方渠道（商业版）：只要 enabled 且有可用模型，直接视为可用
+    const mromaOfficial = globalChannels.find((c) => c.id === 'mroma-official')
+    if (mromaOfficial?.enabled && mromaOfficial.models.some((m) => m.enabled)) return true
     // 其他渠道：需在 agentChannelIds 白名单中
     if (!agentChannelIds || agentChannelIds.length === 0) return false
     return globalChannels.some(
@@ -1177,7 +1177,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       const localUuid = crypto.randomUUID()
 
       // 1. 立即注入 liveMessages（作为普通用户消息显示）
-      const syntheticMsg: import('@proma/shared').SDKMessage = {
+      const syntheticMsg: import('@mroma/shared').SDKMessage = {
         type: 'user',
         uuid: localUuid,
         message: {
@@ -1185,7 +1185,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         },
         parent_tool_use_id: null,
         _createdAt: Date.now(),
-      } as unknown as import('@proma/shared').SDKMessage
+      } as unknown as import('@mroma/shared').SDKMessage
 
       store.set(liveMessagesMapAtom, (prev) => {
         const map = new Map(prev)
@@ -1446,7 +1446,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     const localUuid = crypto.randomUUID()
 
     // 1. 立即注入合成用户消息（/compact 气泡立刻可见，与普通发送路径一致）
-    const syntheticMsg: import('@proma/shared').SDKMessage = {
+    const syntheticMsg: import('@mroma/shared').SDKMessage = {
       type: 'user',
       uuid: localUuid,
       message: {
@@ -1454,7 +1454,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       },
       parent_tool_use_id: null,
       _createdAt: streamStartedAt,
-    } as unknown as import('@proma/shared').SDKMessage
+    } as unknown as import('@mroma/shared').SDKMessage
 
     store.set(liveMessagesMapAtom, (prev) => {
       const map = new Map(prev)
@@ -1695,8 +1695,8 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     const handler = (): void => {
       if (streaming) handleStop()
     }
-    window.addEventListener('proma:stop-generation', handler)
-    return () => window.removeEventListener('proma:stop-generation', handler)
+    window.addEventListener('mroma:stop-generation', handler)
+    return () => window.removeEventListener('mroma:stop-generation', handler)
   }, [streaming, handleStop])
 
   // 监听快捷键系统分发的 focus-input 事件（Cmd+L）
@@ -1705,8 +1705,8 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       const proseMirror = document.querySelector('[data-input-mode="agent"] .ProseMirror') as HTMLElement | null
       proseMirror?.focus()
     }
-    window.addEventListener('proma:focus-input', handler)
-    return () => window.removeEventListener('proma:focus-input', handler)
+    window.addEventListener('mroma:focus-input', handler)
+    return () => window.removeEventListener('mroma:focus-input', handler)
   }, [])
 
   const allAskUserRequests = useAtomValue(allPendingAskUserRequestsAtom)

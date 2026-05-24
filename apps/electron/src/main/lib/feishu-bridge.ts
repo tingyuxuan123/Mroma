@@ -25,8 +25,8 @@ import type {
   FeishuChatMessage,
   FeishuUpdateBindingInput,
   FeishuBotConfig,
-} from '@proma/shared'
-import { FEISHU_IPC_CHANNELS, AGENT_IPC_CHANNELS } from '@proma/shared'
+} from '@mroma/shared'
+import { FEISHU_IPC_CHANNELS, AGENT_IPC_CHANNELS } from '@mroma/shared'
 import { getDecryptedBotAppSecret } from './feishu-config'
 import { agentEventBus, runAgentHeadless, stopAgent, isAgentSessionActive } from './agent-service'
 import { createAgentSession, listAgentSessions, getAgentSessionMeta } from './agent-session-manager'
@@ -731,14 +731,14 @@ class FeishuBridge {
     }
 
     if (!workspaceId) {
-      await this.sendMessage(chatId, '请先在 Proma 设置中创建工作区。')
+      await this.sendMessage(chatId, '请先在 Mroma 设置中创建工作区。')
       return
     }
 
     // 渠道/模型：Bot 配置 > 应用设置
     const channelId = this.botConfig.defaultChannelId ?? appSettings.agentChannelId
     if (!channelId) {
-      await this.sendMessage(chatId, '请先在 Proma Agent 设置中选择渠道。')
+      await this.sendMessage(chatId, '请先在 Mroma Agent 设置中选择渠道。')
       return
     }
 
@@ -1243,7 +1243,7 @@ class FeishuBridge {
       }
     }
 
-    // Proma 内部事件处理：错误等
+    // Mroma 内部事件处理：错误等
     if (payload.kind === 'sdk_message' && payload.message.type === 'assistant') {
       const aMsg = payload.message as { error?: { message: string } }
       if (aMsg.error) {
@@ -1305,7 +1305,7 @@ class FeishuBridge {
     const sessions = await listAgentSessions()
     const session = sessions.find((s) => s.id === sessionId)
     const title = session?.title ?? '未命名会话'
-    const preview = '任务已完成，请在 Proma 中查看详情。'
+    const preview = '任务已完成，请在 Mroma 中查看详情。'
 
     // 发送通知卡片到飞书
     const card = buildNotificationCard(title, preview, [], 0)

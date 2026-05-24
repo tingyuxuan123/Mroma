@@ -8,8 +8,8 @@
 import { spawnSync } from 'child_process'
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'fs'
 import { basename, isAbsolute, join, resolve, sep } from 'path'
-import type { ChangedFileEntry, UnstagedChangesResult, UntrackedFileEntry } from '@proma/shared'
-import type { ChangeSource, ChangedFileStatus } from '@proma/shared'
+import type { ChangedFileEntry, UnstagedChangesResult, UntrackedFileEntry } from '@mroma/shared'
+import type { ChangeSource, ChangedFileStatus } from '@mroma/shared'
 
 /** 大文件读取上限：超过则跳过，避免 IPC 序列化撑爆内存 */
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024

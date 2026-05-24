@@ -8,7 +8,7 @@
 import { app, BrowserWindow, screen, shell } from 'electron'
 import type { Rectangle } from 'electron'
 import { basename, join } from 'path'
-import type { DetachedPreviewWindowData, DetachedPreviewWindowInput } from '@proma/shared'
+import type { DetachedPreviewWindowData, DetachedPreviewWindowInput } from '@mroma/shared'
 
 const previewDataById = new Map<string, DetachedPreviewWindowData>()
 const previewWindowsById = new Map<string, BrowserWindow>()

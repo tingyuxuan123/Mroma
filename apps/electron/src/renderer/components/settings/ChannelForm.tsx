@@ -38,7 +38,7 @@ import {
   PROVIDER_DEFAULT_URLS,
   PROVIDER_LABELS,
   isAgentCompatibleProvider,
-} from '@proma/shared'
+} from '@mroma/shared'
 import type {
   Channel,
   ChannelCreateInput,
@@ -47,7 +47,7 @@ import type {
   FetchModelsResult,
   ModelAdvancedConfig,
   ProviderType,
-} from '@proma/shared'
+} from '@mroma/shared'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   AlertDialog,

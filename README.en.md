@@ -1,194 +1,137 @@
-# Proma
+# Mroma
 
-Proma is a local-first AI desktop app that brings multi-model Chat, general-purpose Agent workflows, workspaces, Skills, MCP, remote bots, and memory into one open-source client.
+> A local-first AI desktop app, forked from [Proma](https://github.com/ErlichLiu/Proma).
 
-It is not just another chat box. Proma is meant to become a long-lived Agent workbench for your personal workflows: use Chat for simple answers, use Agent when the task needs to act on files, tools, projects, and longer context.
+Mroma is an open-source desktop client that integrates multi-model Chat and general-purpose Agent into a single Electron app. All data is stored locally by default.
 
-![Proma Poster](https://img.erlich.fun/personal-blog/uPic/pb.png)
+## Features
 
-[中文 README](./README.md) | [Beginner Tutorial](./tutorial/tutorial.md) | [Open-Source Release](https://github.com/ErlichLiu/Proma/releases) | [Commercial Version](https://proma.cool/download)
+### Chat Mode
+- Multi-model conversations with attachment parsing and image input
+- Markdown / Mermaid / KaTeX / code highlighting
+- Parallel conversations for model comparison
+- System prompts, context dividers, and context management
+- Web search, memory tools, and built-in Chat tools
 
-## What Proma Can Do
+### Agent Mode
+- General-purpose Agent powered by `@anthropic-ai/claude-agent-sdk`
+- Workspace isolation with independent MCP Servers, Skills, and files
+- Permission modes: safe / ask / allow-all
+- Streaming long-task output, plan confirmation, and user interaction
+- SubAgent / Tasks support
 
-- **Chat mode**: multi-model conversations, attachments, image input, Markdown / Mermaid / KaTeX / code highlighting, parallel conversations, system prompts, and context controls.
-- **Agent mode**: general-purpose Agent powered by `@anthropic-ai/claude-agent-sdk`, with workspace isolation, permission modes, file operations, streaming output, plan confirmation, and ask-user interactions.
-- **SubAgents / Tasks**: complex tasks can be delegated through the Claude Agent SDK Agent tool, with sub-agent calls and results shown in the message stream.
-- **Skills & MCP**: each workspace can manage its own Skills, MCP servers, and workspace files.
-- **Remote bots**: Lark / Feishu bot bridging is supported, with DingTalk and WeChat bridge entry points also present in the app.
-- **Memory and tools**: Chat and Agent can share memory, with web search, built-in Chat tools, and Agent recommendation helpers.
-- **Local-first data**: conversations, workspaces, attachments, settings, and Skills are stored under `~/.proma/` as JSON / JSONL files, without a local database.
-- **Desktop experience**: auto-update, proxy settings, file preview, global shortcuts, quick task window, voice input, and light / dark / system themes.
+### Model Advanced Configuration
+- Per-model Context Token Limit and Max Output Tokens
+- Capability toggles: image support, fast mode, 1M extended context
+- Auto-save configuration, applied automatically on model selection
 
-## Getting Started
+### Remote Bots
+- Feishu / Lark bot bridging
+- DingTalk and WeChat bridge entry points
+- Trigger local Agent workflows from mobile or group chat
 
-### Download
+### Local-First
+- Data stored in `~/.mroma/` — conversations, workspaces, attachments, settings
+- JSON / JSONL file-based storage, no local database
+- API keys encrypted via Electron `safeStorage`
 
-Download the open-source version from [GitHub Releases](https://github.com/ErlichLiu/Proma/releases). The current release notes are for `v0.9.12`, with builds for macOS Apple Silicon, macOS Intel, and Windows.
-
-If you want fewer API setup steps, you can also use the [Proma commercial version](https://proma.cool/download). The commercial and open-source versions run in parallel; the commercial version mainly adds built-in model channels and subscription options.
-
-### First Setup
-
-1. Open Proma and finish the environment check. Agent mode depends on local tooling, especially Git, Node.js / Bun, and a usable shell.
-2. Go to **Settings > Channels**, add at least one AI provider channel, and fill in Base URL, API Key, and model list.
-3. Chat mode can use OpenAI, Anthropic, Google, or OpenAI-compatible channels.
-4. Agent mode requires an Anthropic or Anthropic-compatible channel, such as Anthropic, DeepSeek, Kimi API, or Kimi Coding Plan.
-5. Go to **Settings > Agent** and choose the default Agent channel, model, and workspace.
-6. Configure memory, web search, or Feishu / DingTalk / WeChat bridges from their corresponding settings tabs if needed.
-
-## Choosing A Mode
-
-### Use Chat For
-
-- Everyday Q&A, explanation, translation, rewriting, and lightweight code discussion.
-- Reading attachments and summarizing or comparing their content.
-- One-off conversations enhanced by web search or memory tools.
-- Comparing outputs from multiple models or exploring different system prompts.
-
-### Use Agent For
-
-- Creating, editing, or organizing local files.
-- Research, report writing, and multi-step tasks.
-- Work that needs MCP, Skills, Shell, Git, project files, or external context.
-- Tasks that benefit from permissions, plan mode, background execution, or remote bot follow-up.
-
-In short: **use Chat when you need an answer; use Agent when you need work to be done.**
-
-## Screenshots
-
-### Chat Analysis
-
-Use Chat for lightweight but practical analysis: compare audience needs, generate a table, and shape first-screen README copy quickly.
-
-![Proma Chat analysis](./docs/assets/screenshots/proma-chat-demo.png)
-
-### Agent Workbench
-
-Agent works inside a workspace, reads project files, progresses through tasks, outputs structured findings, and keeps reusable files visible in the right-side workspace panel.
-
-![Proma Agent workbench](./docs/assets/screenshots/proma-agent-demo.png)
-
-### Skills
-
-Each workspace can keep its own reusable Skills. The `feedback-synthesis` Skill shown here turns scattered feedback, interviews, and issues into themes, evidence, and priority suggestions.
-
-![Proma workspace Skills](./docs/assets/screenshots/proma-skills-demo.png)
-
-### Skills & MCP
-
-The same workspace can manage stdio and HTTP MCP servers, enabling or disabling external context per project.
-
-![Proma MCP settings](./docs/assets/screenshots/proma-mcp-demo.png)
-
-### Streaming Voice Input
-
-Proma supports Doubao-powered streaming voice input, both inside Proma and across the desktop:
-
-- Inside Proma: press Ctrl + Backtick to start recognition, then press it again to finish and insert the transcript into the active Proma input box.
-- Outside Proma: press Ctrl + Backtick to start recognition, then press it again to finish and insert the transcript at the current cursor position. If there is no active cursor, Proma writes the transcript to the clipboard.
-
-![Proma voice input](./docs/assets/screenshots/proma-typeless-input.png)
+### Desktop Experience
+- Auto-update, proxy settings, file preview
+- Global shortcuts, quick task window
+- Streaming voice input (global)
+- Light / dark / system theme
 
 ## Supported Providers
 
 | Provider | Chat | Agent | Protocol |
 | --- | --- | --- | --- |
-| Anthropic | Supported | Supported | Anthropic Messages API |
-| DeepSeek | Supported | Supported | Anthropic-compatible protocol |
-| Kimi API | Supported | Supported | Anthropic-compatible protocol |
-| Kimi Coding Plan | Supported | Supported | Anthropic-compatible protocol with dedicated auth headers |
-| OpenAI | Supported | Not yet | Chat Completions |
-| Google | Supported | Not yet | Gemini Generative Language API |
-| Zhipu AI | Supported | Supported | Anthropic-compatible protocol |
-| MiniMax | Supported | Supported | Anthropic-compatible protocol |
-| Doubao | Supported | Supported | Anthropic-compatible protocol |
-| Qwen | Supported | Supported | Anthropic-compatible protocol |
-| Custom endpoint | Supported | Not yet | OpenAI-compatible protocol |
+| Anthropic | ✅ | ✅ | Messages API |
+| DeepSeek | ✅ | ✅ | Anthropic compatible |
+| Kimi API | ✅ | ✅ | Anthropic compatible |
+| Kimi Coding Plan | ✅ | ✅ | Anthropic compatible |
+| OpenAI | ✅ | — | Chat Completions |
+| Google | ✅ | — | Gemini API |
+| Zhipu AI | ✅ | ✅ | Anthropic compatible |
+| MiniMax | ✅ | ✅ | Anthropic compatible |
+| Doubao | ✅ | ✅ | Anthropic compatible |
+| Qwen | ✅ | ✅ | Anthropic compatible |
+| Custom endpoint | ✅ | — | OpenAI compatible |
 
-Agent mode is powered by Claude Agent SDK, so it currently requires an Anthropic or Anthropic-compatible channel. Chat mode uses Provider Adapters from `@proma/core` to support different protocols.
+## Getting Started
 
-## Local Data
+### Install Dependencies
 
-Proma stores data in local files so it is easy to back up, migrate, and inspect.
+```bash
+bun install
+```
 
-```text
-~/.proma/
-├── channels.json
-├── conversations.json
-├── conversations/
-│   └── {conversation-id}.jsonl
-├── agent-sessions.json
-├── agent-sessions/
-│   └── {session-id}.jsonl
-├── agent-workspaces/
+### Development
+
+```bash
+# Auto-start Vite + Electron + hot reload
+bun run dev
+
+# Or start manually
+cd apps/electron
+bun run dev:vite      # Terminal 1: Vite renderer
+bun run dev:electron  # Terminal 2: Electron main process
+```
+
+### Build
+
+```bash
+bun run electron:build   # Build only
+bun run electron:start   # Build and run
+bun run typecheck        # Type check
+bun test                 # Tests
+```
+
+### Distribution
+
+```bash
+cd apps/electron
+bun run dist:mac    # macOS
+bun run dist:win    # Windows
+bun run dist:linux  # Linux
+bun run dist:fast   # Current arch quick build
+```
+
+## Project Structure
+
+```
+mroma/
+├── packages/
+│   ├── shared/     # Shared types, IPC constants, config, utilities
+│   ├── core/       # Provider Adapters, code highlighting
+│   └── ui/         # Shared React UI components
+└── apps/
+    └── electron/   # Electron desktop app
+        └── src/
+            ├── main/       # Main process + services
+            ├── preload/    # IPC context bridge
+            └── renderer/   # React UI (Vite + Tailwind + Radix UI)
+```
+
+Package naming: `@mroma/*` (`@mroma/core`, `@mroma/shared`, `@mroma/ui`, `@mroma/electron`)
+
+### Local Data Directory
+
+```
+~/.mroma/
+├── channels.json           # Channel config (encrypted API keys)
+├── conversations.json      # Conversation index
+├── conversations/          # Messages (JSONL)
+├── agent-sessions.json     # Agent session index
+├── agent-sessions/         # Agent messages (JSONL)
+├── agent-workspaces/       # Workspace directories
 │   └── {workspace-slug}/
 │       ├── workspace-files/
 │       ├── mcp.json
 │       └── skills/
-├── attachments/
-├── user-profile.json
-├── settings.json
-└── sdk-config/
-```
-
-API keys are encrypted through Electron `safeStorage` before being written to `channels.json`. Proma does not use a local database; core data is represented as JSON configuration and append-only JSONL logs.
-
-## Development
-
-Proma is a Bun workspace monorepo.
-
-```text
-proma-v2/
-├── packages/
-│   ├── shared/     # shared types, IPC constants, config, utilities
-│   ├── core/       # Provider Adapters, SSE, code highlighting
-│   └── ui/         # shared React UI components
-└── apps/
-    └── electron/   # Electron desktop app
-```
-
-Current package versions:
-
-| Package | Version | Responsibility |
-| --- | --- | --- |
-| `@proma/electron` | `0.9.12` | Electron desktop app |
-| `@proma/shared` | `0.1.17` | shared types, IPC constants, config, utilities |
-| `@proma/core` | `0.2.9` | Provider Adapters, SSE, Shiki highlighting |
-| `@proma/ui` | `0.1.3` | shared React UI components |
-
-Common commands:
-
-```bash
-# Install dependencies
-bun install
-
-# Development mode: Vite + Electron + hot reload
-bun run dev
-
-# Build Electron app
-bun run electron:build
-
-# Build and run
-bun run electron:start
-
-# Typecheck
-bun run typecheck
-
-# Test
-bun test
-```
-
-More granular scripts are available inside the Electron app:
-
-```bash
-cd apps/electron
-
-bun run dev:vite
-bun run dev:electron
-bun run build:main
-bun run build:preload
-bun run build:renderer
-bun run dist:fast
+├── attachments/            # Attachment files
+├── user-profile.json       # User profile
+├── settings.json           # App settings
+└── sdk-config/             # SDK config
 ```
 
 ## Tech Stack
@@ -196,91 +139,47 @@ bun run dist:fast
 | Layer | Technology |
 | --- | --- |
 | Runtime | Bun |
+| Language | TypeScript |
 | Desktop | Electron 39 |
-| Frontend | React 18 + TypeScript |
+| Frontend | React 18 |
 | State | Jotai |
-| Styling | Tailwind CSS + Radix UI |
-| Rich text input | TipTap |
-| Markdown / diagrams / math | React Markdown + Beautiful Mermaid + KaTeX |
-| Code highlighting | Shiki |
+| UI | Radix UI + Tailwind CSS |
+| Rich Text | TipTap |
+| Code Highlighting | Shiki |
+| Diagrams / Math | Beautiful Mermaid + KaTeX |
 | Build | Vite + esbuild |
 | Distribution | electron-builder |
-| Agent SDK | `@anthropic-ai/claude-agent-sdk@0.3.143` |
+| Agent SDK | `@anthropic-ai/claude-agent-sdk` |
 
 ## Architecture
 
-Proma's core communication path is:
+Core communication path:
 
-```text
-shared types and IPC constants
-  -> main/ipc.ts handlers
-  -> preload/index.ts window.electronAPI bridge
-  -> renderer Jotai atoms and React components
+```
+shared types and IPC constants → main/ipc.ts handlers → preload bridge → renderer Jotai atoms
 ```
 
-Main-process services live in `apps/electron/src/main/lib/`:
+Main process services (`apps/electron/src/main/lib/`):
 
-- `agent-orchestrator.ts`: Agent orchestration, environment variables, SDK calls, event streams, error handling.
-- `agent-session-manager.ts`: Agent session index and JSONL message persistence.
-- `agent-workspace-manager.ts`: workspaces, MCP, Skills, and workspace files.
-- `chat-service.ts`: Chat streaming, Provider Adapters, tool activity.
-- `conversation-manager.ts`: Chat session index and message storage.
-- `channel-manager.ts`: channel CRUD, API key encryption, connection tests, model fetching.
-- `feishu-bridge.ts` / `dingtalk-bridge.ts` / `wechat-bridge.ts`: remote bot bridges.
-- `memory-service.ts`, `chat-tool-*`, `document-parser.ts`, `workspace-watcher.ts`: memory, tools, document parsing, and file watching.
+| Service | Responsibility |
+| --- | --- |
+| `agent-orchestrator.ts` | Agent orchestration, SDK calls, event streams |
+| `agent-session-manager.ts` | Agent session persistence |
+| `agent-workspace-manager.ts` | Workspaces, MCP, Skills management |
+| `chat-service.ts` | Chat streaming, Provider Adapters |
+| `conversation-manager.ts` | Conversation management |
+| `channel-manager.ts` | Channel CRUD, API key encryption |
+| `feishu-bridge.ts` | Feishu bot bridge |
+| `memory-service.ts` | Cross-session memory |
 
-Renderer state is managed with Jotai. Key atoms live in `apps/electron/src/renderer/atoms/`. Agent IPC listeners are mounted globally at the app root so streaming events, permission requests, and background tasks survive view changes.
+## Acknowledgements
 
-## Packaging Notes
-
-`@anthropic-ai/claude-agent-sdk` uses platform native binaries since `0.2.113+`. Proma marks the SDK as external in esbuild and includes the SDK main package plus platform subpackages in `electron-builder.yml`.
-
-When changing packaging configuration, make sure:
-
-- Main-process esbuild keeps `--external:@anthropic-ai/claude-agent-sdk`.
-- `apps/electron/package.json` includes target SDK platform subpackages in `optionalDependencies`.
-- `apps/electron/electron-builder.yml` includes the SDK main package and platform subpackages in `files`.
-- Ordinary npm dependencies should usually be bundled into `main.cjs` by esbuild instead of being marked external.
-
-See [AGENTS.md](./AGENTS.md) for the full engineering conventions.
-
-## Contributing
-
-Bug fixes, documentation improvements, tests, UX polish, Skills, MCP configs, and real-world Agent workflows are all welcome.
-
-Before opening a PR, please check:
-
-- Use Bun scripts and do not mix npm / pnpm lockfiles.
-- Use Jotai for state management.
-- Keep the app local-first and prefer config files plus JSON / JSONL storage.
-- Do not use TypeScript `any`; prefer `interface` for object shapes.
-- When adding IPC, update shared types, main handler, preload bridge, and renderer calls together.
-- Bump the patch version of affected packages when behavior changes.
-- Add focused tests where possible, especially for shared logic, IPC contracts, and persistence formats.
-
-Proma currently has a PR bounty program. You can leave your email in the PR description for follow-up.
-
-![Proma PR Bounty](https://img.erlich.fun/personal-blog/uPic/PR%20%E8%B5%A0%E9%87%91%201.png)
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=ErlichLiu%2FProma&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ErlichLiu/Proma&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ErlichLiu/Proma&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=ErlichLiu/Proma&type=date&legend=top-left" />
- </picture>
-</a>
-
-## Credits
-
-- [Shiki](https://shiki.style/): code highlighting.
-- [Beautiful Mermaid](https://github.com/lukilabs/beautiful-mermaid): Mermaid diagram rendering.
-- [Cherry Studio](https://github.com/CherryHQ/cherry-studio): inspiration for multi-provider desktop AI products.
-- [Lobe Icons](https://github.com/lobehub/lobe-icons): AI / LLM brand icons.
-- [Craft Agents OSS](https://github.com/lukilabs/craft-agents-oss): Agent SDK integration reference.
-- [MemOS](https://memos.openmem.net): memory reference and integration.
+- Original project [Proma](https://github.com/ErlichLiu/Proma)
+- [Shiki](https://shiki.style/) — Code highlighting
+- [Beautiful Mermaid](https://github.com/lukilabs/beautiful-mermaid) — Diagram rendering
+- [Craft Agents OSS](https://github.com/lukilabs/craft-agents-oss) — Agent SDK integration patterns
+- [Lobe Icons](https://github.com/lobehub/lobe-icons) — AI brand icons
 
 ## License
 
-Current workspace packages declare `Apache-2.0` in their `package.json` files. Until a root license file is added, please refer to the actual repository release contents and package declarations.
+Apache-2.0

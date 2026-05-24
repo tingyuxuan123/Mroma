@@ -5,7 +5,7 @@
  * 通过 ProviderType 查找对应的适配器实例。
  */
 
-import type { ProviderType } from '@proma/shared'
+import type { ProviderType } from '@mroma/shared'
 import type { ProviderAdapter } from './types.ts'
 import { AnthropicAdapter } from './anthropic-adapter.ts'
 import { OpenAIAdapter } from './openai-adapter.ts'
@@ -47,7 +47,7 @@ const adapterRegistry = new Map<ProviderType, ProviderAdapter>([
 export function getAdapter(provider: ProviderType): ProviderAdapter {
   const adapter = adapterRegistry.get(provider)
   if (!adapter) {
-    throw new Error(`不支持的供应商: ${provider}。你可能过去使用的是 Proma 商业版，请重新下载商业版覆盖安装，当前版本为开源版本。`)
+    throw new Error(`不支持的供应商: ${provider}。你可能过去使用的是 Mroma 商业版，请重新下载商业版覆盖安装，当前版本为开源版本。`)
   }
   return adapter
 }

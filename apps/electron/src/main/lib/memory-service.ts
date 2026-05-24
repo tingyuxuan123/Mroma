@@ -2,12 +2,12 @@
  * 全局记忆配置服务
  *
  * 管理 MemOS Cloud 记忆配置的读写。
- * 存储在 ~/.proma/memory.json（全局共享）
+ * 存储在 ~/.mroma/memory.json（全局共享）
  */
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { getMemoryConfigPath } from './config-paths'
-import type { MemoryConfig } from '@proma/shared'
+import type { MemoryConfig } from '@mroma/shared'
 
 /** 默认记忆配置 */
 const DEFAULT_MEMORY_CONFIG: MemoryConfig = {

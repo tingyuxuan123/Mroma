@@ -20,22 +20,22 @@ import { join, dirname } from 'node:path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { app } from 'electron'
-import type { AgentSendInput, AgentMessage, AgentGenerateTitleInput, AgentProviderAdapter, AgentSessionMeta, TypedError, RetryAttempt, SDKMessage, SDKAssistantMessage, AgentStreamPayload, RewindSessionResult, SdkBeta, ProviderType } from '@proma/shared'
+import type { AgentSendInput, AgentMessage, AgentGenerateTitleInput, AgentProviderAdapter, AgentSessionMeta, TypedError, RetryAttempt, SDKMessage, SDKAssistantMessage, AgentStreamPayload, RewindSessionResult, SdkBeta, ProviderType } from '@mroma/shared'
 import {
-  PROMA_DEFAULT_PERMISSION_MODE,
-  PROMA_PERMISSION_MODE_CONFIG,
+  MROMA_DEFAULT_PERMISSION_MODE,
+  MROMA_PERMISSION_MODE_CONFIG,
   SAFE_TOOLS,
   THINKING_SIGNATURE_ERROR_CODE,
   THINKING_SIGNATURE_ERROR_MESSAGE,
   THINKING_SIGNATURE_ERROR_TITLE,
-} from '@proma/shared'
-import type { PermissionRequest, PromaPermissionMode, AskUserRequest, ExitPlanModeRequest } from '@proma/shared'
+} from '@mroma/shared'
+import type { PermissionRequest, MromaPermissionMode, AskUserRequest, ExitPlanModeRequest } from '@mroma/shared'
 import type { ClaudeAgentQueryOptions } from './adapters/claude-agent-adapter'
 import { isPromptTooLongError, isThinkingSignatureError, friendlyErrorMessage, mapSDKErrorToTypedError, extractErrorDetails, shouldKeepChannelOpen } from './adapters/claude-agent-adapter'
 import { isTransientNetworkError } from './error-patterns'
 import { AgentEventBus } from './agent-event-bus'
 import { decryptApiKey, getChannelById, listChannels } from './channel-manager'
-import { getAdapter, fetchTitle, normalizeAnthropicBaseUrlForSdk } from '@proma/core'
+import { getAdapter, fetchTitle, normalizeAnthropicBaseUrlForSdk } from '@mroma/core'
 import { getFetchFn } from './proxy-fetch'
 import { getEffectiveProxyUrl } from './proxy-settings-service'
 import { appendSDKMessages, updateAgentSessionMeta, getAgentSessionMeta, getAgentSessionMessages, getAgentSessionSDKMessages, truncateSDKMessages, resolveUserUuidFromSDK, rewindFilesFromSnapshot } from './agent-session-manager'
@@ -208,7 +208,7 @@ function getRetryDelayMs(attempt: number, elapsedRetryDelayMs: number): number {
  * 再沿父目录 `@anthropic-ai/` 找到同级的平台子包。
  *
  * 多种策略降级：createRequire → 全局 require → cwd/node_modules 手动查找
- * 打包环境下：asar 内的路径需要转换为 asar.unpacked 路径（即便 Proma 当前 `asar: false`
+ * 打包环境下：asar 内的路径需要转换为 asar.unpacked 路径（即便 Mroma 当前 `asar: false`
  * 兜底不伤人）。
  */
 function resolveSDKCliPath(): string {
@@ -490,7 +490,7 @@ export class AgentOrchestrator {
   private stoppedBySessions = new Set<string>()
 
   /** 运行中会话的当前权限模式（支持运行时动态切换） */
-  private sessionPermissionModes = new Map<string, PromaPermissionMode>()
+  private sessionPermissionModes = new Map<string, MromaPermissionMode>()
 
   constructor(adapter: AgentProviderAdapter, eventBus: AgentEventBus) {
     this.adapter = adapter
@@ -646,7 +646,7 @@ export class AgentOrchestrator {
     mcpServers: Record<string, Record<string, unknown>>,
   ): Promise<void> {
     const memoryConfig = getMemoryConfig()
-    const memUserId = memoryConfig.userId?.trim() || 'proma-user'
+    const memUserId = memoryConfig.userId?.trim() || 'mroma-user'
     if (!memoryConfig.enabled || !memoryConfig.apiKey) return
 
     try {
@@ -856,7 +856,7 @@ export class AgentOrchestrator {
 
     const toPersist = accumulatedMessages.filter(
       (m) => m.type === 'assistant' || m.type === 'user' || m.type === 'result'
-        || (m.type === 'system' && ['compact_boundary', 'permission_denied'].includes((m as import('@proma/shared').SDKSystemMessage).subtype ?? ''))
+        || (m.type === 'system' && ['compact_boundary', 'permission_denied'].includes((m as import('@mroma/shared').SDKSystemMessage).subtype ?? ''))
     ).filter((m) => {
       // 过滤 SDK 内部生成的 user 文本消息（如 Skill 展开 prompt），与实时流过滤逻辑一致
       if (m.type === 'user') {
@@ -1033,7 +1033,7 @@ export class AgentOrchestrator {
       console.log(`[Agent 编排] 检测到回退 resume: resumeSessionAt=${rewindResumeAt}`)
     }
 
-    console.log(`[Agent 编排] Resume 状态: sdkSessionId=${existingSdkSessionId || '无'}, proma sessionId=${sessionId}`)
+    console.log(`[Agent 编排] Resume 状态: sdkSessionId=${existingSdkSessionId || '无'}, mroma sessionId=${sessionId}`)
 
     // 5. 持久化用户消息（SDKMessage 格式）
     const userSDKMsg: SDKMessage = {
@@ -1052,7 +1052,7 @@ export class AgentOrchestrator {
     let titleGenerationStarted = false
     let agentCwd: string | undefined
     let workspaceSlug: string | undefined
-    let workspace: import('@proma/shared').AgentWorkspace | undefined
+    let workspace: import('@mroma/shared').AgentWorkspace | undefined
 
     try {
       // 8. 动态导入 SDK
@@ -1078,13 +1078,13 @@ export class AgentOrchestrator {
               key: 'd',
               label: '下载最新安装包',
               action: 'open_external',
-              payload: 'https://proma.cool/download',
+              payload: 'https://mroma.cool/download',
             },
             {
               key: 'i',
               label: '报告问题',
               action: 'open_external',
-              payload: 'https://github.com/ErlichLiu/Proma/issues/new',
+              payload: 'https://github.com/ErlichLiu/Mroma/issues/new',
             },
           ],
           canRetry: false,
@@ -1148,7 +1148,7 @@ export class AgentOrchestrator {
 
       // 9.6 直接信任已保存的 sdkSessionId，跳过 listSessions 预验证
       // 原因：listSessions({ dir }) 基于 cwd 路径哈希查找，但 session 级别的 cwd
-      // （如 ~/.proma/agent-workspaces/workspace-xxx/sessionId）与 SDK 内部存储的路径哈希可能不匹配，
+      // （如 ~/.mroma/agent-workspaces/workspace-xxx/sessionId）与 SDK 内部存储的路径哈希可能不匹配，
       // 导致 listSessions 始终返回 0 个会话，误杀有效的 resume。
       // SDK 本身会优雅处理无效的 resume ID（回退为新会话），无需预验证。
       if (existingSdkSessionId) {
@@ -1184,7 +1184,7 @@ export class AgentOrchestrator {
         const toolLines: string[] = ['用户在消息中明确引用了以下工具，请在本次回复中主动调用：']
         for (const slug of mentionedSkills ?? []) {
           const qualifiedName = workspaceSlug
-            ? `proma-workspace-${workspaceSlug}:${slug}`
+            ? `mroma-workspace-${workspaceSlug}:${slug}`
             : slug
           toolLines.push(`- Skill: ${qualifiedName}（请立即调用此 Skill）`)
         }
@@ -1213,19 +1213,19 @@ export class AgentOrchestrator {
       // 12. 读取应用设置并确定权限模式
       // 权限模式只属于当前 session；新会话默认完全自动模式。
       const appSettings = getSettings()
-      const initialPermissionMode: PromaPermissionMode = permissionModeOverride
-        ?? PROMA_DEFAULT_PERMISSION_MODE
+      const initialPermissionMode: MromaPermissionMode = permissionModeOverride
+        ?? MROMA_DEFAULT_PERMISSION_MODE
       // 注册到 Map，支持运行中动态切换
       this.sessionPermissionModes.set(sessionId, initialPermissionMode)
       console.log(`[Agent 编排] 权限模式: ${initialPermissionMode}${permissionModeOverride ? '（外部覆盖）' : ''}`)
 
       // 当初始模式为 plan 时，通知渲染进程展示计划模式 UI（如「Agent 正在规划」横幅）
       if (initialPermissionMode === 'plan') {
-        this.eventBus.emit(sessionId, { kind: 'proma_event', event: { type: 'enter_plan_mode', sessionId } })
+        this.eventBus.emit(sessionId, { kind: 'mroma_event', event: { type: 'enter_plan_mode', sessionId } })
       }
 
       /** 读取当前会话的实时权限模式（支持运行中切换） */
-      const getPermissionMode = (): PromaPermissionMode =>
+      const getPermissionMode = (): MromaPermissionMode =>
         this.sessionPermissionModes.get(sessionId) ?? initialPermissionMode
 
       // ExitPlanMode 拦截器：plan 模式下走 UI 审批流程
@@ -1235,7 +1235,7 @@ export class AgentOrchestrator {
           toolInput,
           signal,
           (request: ExitPlanModeRequest) => {
-            this.eventBus.emit(sessionId, { kind: 'proma_event', event: { type: 'exit_plan_mode_request', request } })
+            this.eventBus.emit(sessionId, { kind: 'mroma_event', event: { type: 'exit_plan_mode_request', request } })
           },
         )
       }
@@ -1244,11 +1244,11 @@ export class AgentOrchestrator {
       const autoCanUseTool = permissionService.createCanUseTool(
         sessionId,
         (request: PermissionRequest) => {
-          this.eventBus.emit(sessionId, { kind: 'proma_event', event: { type: 'permission_request', request } })
+          this.eventBus.emit(sessionId, { kind: 'mroma_event', event: { type: 'permission_request', request } })
         },
         (sid, toolInput, signal, sendAskUser) => askUserService.handleAskUserQuestion(sid, toolInput, signal, sendAskUser),
         (request: AskUserRequest) => {
-          this.eventBus.emit(sessionId, { kind: 'proma_event', event: { type: 'ask_user_request', request } })
+          this.eventBus.emit(sessionId, { kind: 'mroma_event', event: { type: 'ask_user_request', request } })
         },
       )
 
@@ -1347,7 +1347,7 @@ export class AgentOrchestrator {
         // EnterPlanMode：标记进入状态，通知渲染进程
         if (toolName === 'EnterPlanMode') {
           planModeEntered = true
-          this.eventBus.emit(sessionId, { kind: 'proma_event', event: { type: 'enter_plan_mode', sessionId } })
+          this.eventBus.emit(sessionId, { kind: 'mroma_event', event: { type: 'enter_plan_mode', sessionId } })
           return { behavior: 'allow' as const, updatedInput: input }
         }
 
@@ -1356,7 +1356,7 @@ export class AgentOrchestrator {
           return askUserService.handleAskUserQuestion(
             sessionId, input, options.signal,
             (request: AskUserRequest) => {
-              this.eventBus.emit(sessionId, { kind: 'proma_event', event: { type: 'ask_user_request', request } })
+              this.eventBus.emit(sessionId, { kind: 'mroma_event', event: { type: 'ask_user_request', request } })
             },
           )
         }
@@ -1417,7 +1417,7 @@ export class AgentOrchestrator {
         sdkCliPath: cliPath,
         env: sdkEnv,
         ...(maxTurns != null && { maxTurns }),
-        sdkPermissionMode: PROMA_PERMISSION_MODE_CONFIG[initialPermissionMode].sdkMode,
+        sdkPermissionMode: MROMA_PERMISSION_MODE_CONFIG[initialPermissionMode].sdkMode,
         // 当提供 canUseTool 回调时必须为 false，否则 CLI 同时收到
         // --allow-dangerously-skip-permissions 和 --permission-prompt-tool stdio
         // 两个矛盾的指令，导致 ExitPlanMode/AskUserQuestion 等交互式工具失败。
@@ -1427,7 +1427,7 @@ export class AgentOrchestrator {
         canUseTool,
         ...(initialPermissionMode === 'auto' && { allowedTools: [...SAFE_TOOLS] }),
         // claude_code preset 提供基础环境信息（platform/shell/OS/git/model/知识截止日期等）
-        // buildSystemPrompt 追加 Proma 特有指令（角色定义、SubAgent 策略、工作区信息等）
+        // buildSystemPrompt 追加 Mroma 特有指令（角色定义、SubAgent 策略、工作区信息等）
         systemPrompt: {
           type: 'preset',
           preset: 'claude_code',
@@ -1499,7 +1499,7 @@ export class AgentOrchestrator {
           resolvedModel = model
           console.log(`[Agent 编排] SDK 确认模型: ${resolvedModel}`)
           // 通知渲染进程更新流式状态中的模型信息
-          this.eventBus.emit(sessionId, { kind: 'proma_event', event: { type: 'model_resolved', model } })
+          this.eventBus.emit(sessionId, { kind: 'mroma_event', event: { type: 'model_resolved', model } })
         },
         onContextWindow: (cw: number) => {
           console.log(`[Agent 编排] 缓存 contextWindow: ${cw}`)
@@ -1553,11 +1553,11 @@ export class AgentOrchestrator {
             }
 
             this.eventBus.emit(sessionId, {
-              kind: 'proma_event',
+              kind: 'mroma_event',
               event: { type: 'retry', status: 'starting', attempt: retryAttempt, maxAttempts: MAX_AUTO_RETRIES, delaySeconds: delaySec, reason: lastRetryableError ?? '未知错误' },
             })
             this.eventBus.emit(sessionId, {
-              kind: 'proma_event',
+              kind: 'mroma_event',
               event: { type: 'retry', status: 'attempt', attemptData },
             })
 
@@ -1639,7 +1639,7 @@ export class AgentOrchestrator {
                 }
 
                 // Thinking signature 不兼容：通常由跨模型 resume 触发。
-                // 先自动清除 SDK resume 关系，改用 Proma 已持久化上下文重跑一次；再失败才展示用户提示。
+                // 先自动清除 SDK resume 关系，改用 Mroma 已持久化上下文重跑一次；再失败才展示用户提示。
                 if (
                   typedError.code === THINKING_SIGNATURE_ERROR_CODE &&
                   canTryThinkingSignatureRecovery(attempt)
@@ -1705,7 +1705,7 @@ export class AgentOrchestrator {
                 // 如果之前有重试记录，发送 retry_failed
                 if (retryAttemptsScheduled > 0 && lastRetryableError) {
                   this.eventBus.emit(sessionId, {
-                    kind: 'proma_event',
+                    kind: 'mroma_event',
                     event: { type: 'retry', status: 'failed', attemptData: { attempt: retryAttemptsScheduled, timestamp: Date.now(), reason: lastRetryableError, errorMessage: typedError.message, delaySeconds: 0 } },
                   })
                 }
@@ -1741,7 +1741,7 @@ export class AgentOrchestrator {
                 }
               }
             } else if (msg.type === 'system') {
-              const sysMsg = msg as import('@proma/shared').SDKSystemMessage
+              const sysMsg = msg as import('@mroma/shared').SDKSystemMessage
               if (sysMsg.subtype === 'compact_boundary' || sysMsg.subtype === 'permission_denied') {
                 accumulatedMessages.push(msg)
               }
@@ -1799,7 +1799,7 @@ export class AgentOrchestrator {
 
           // 正常完成 — 如果之前有重试，发送 retry_cleared
           if (retryAttemptsScheduled > 0) {
-            this.eventBus.emit(sessionId, { kind: 'proma_event', event: { type: 'retry', status: 'cleared' } })
+            this.eventBus.emit(sessionId, { kind: 'mroma_event', event: { type: 'retry', status: 'cleared' } })
             console.log(`[Agent 编排] 重试成功，已在第 ${attempt} 次尝试后恢复`)
           }
           retrySucceeded = true
@@ -1975,7 +1975,7 @@ export class AgentOrchestrator {
           // 如果之前有重试记录，发送 retry_failed
           if (retryAttemptsScheduled > 0 && lastRetryableError) {
             this.eventBus.emit(sessionId, {
-              kind: 'proma_event',
+              kind: 'mroma_event',
               event: { type: 'retry', status: 'failed', attemptData: { attempt: retryAttemptsScheduled, timestamp: Date.now(), reason: lastRetryableError, errorMessage: userFacingError, delaySeconds: 0 } },
             })
           }
@@ -2004,7 +2004,7 @@ export class AgentOrchestrator {
           ? '重试等待已达到 5 分钟后仍然失败'
           : `重试 ${retryAttemptsScheduled || MAX_AUTO_RETRIES} 次后仍然失败`
         this.eventBus.emit(sessionId, {
-          kind: 'proma_event',
+          kind: 'mroma_event',
           event: { type: 'retry', status: 'failed', attemptData: { attempt: retryAttemptsScheduled || MAX_AUTO_RETRIES, timestamp: Date.now(), reason: lastRetryableError, errorMessage: retryFailureMessage, delaySeconds: 0 } },
         })
 
@@ -2064,10 +2064,10 @@ export class AgentOrchestrator {
   /**
    * 运行中动态切换会话的权限模式
    *
-   * 同时更新 Proma 侧（canUseTool 闭包读取的 Map）和 SDK 侧（query.setPermissionMode）。
+   * 同时更新 Mroma 侧（canUseTool 闭包读取的 Map）和 SDK 侧（query.setPermissionMode）。
    * 典型场景：用户在 Agent 运行中通过 PermissionModeSelector 切换模式。
    */
-  async updateSessionPermissionMode(sessionId: string, mode: PromaPermissionMode): Promise<void> {
+  async updateSessionPermissionMode(sessionId: string, mode: MromaPermissionMode): Promise<void> {
     if (!this.activeSessions.has(sessionId)) return
     this.sessionPermissionModes.set(sessionId, mode)
     // 同步通知 SDK 侧
@@ -2083,7 +2083,7 @@ export class AgentOrchestrator {
    * 回退会话到指定消息点
    *
    * 1. 直接从 SDK JSONL 的 file-history-snapshot 恢复文件到目标时刻的状态
-   * 2. 截断 Proma JSONL 到 assistantMessageUuid（inclusive）
+   * 2. 截断 Mroma JSONL 到 assistantMessageUuid（inclusive）
    * 3. 记录 resumeAtMessageUuid，下次发消息时 SDK 从该点分支继续
    *
    * 文件恢复通过解析 SDK JSONL 中的快照完成，无需运行中的 Query。
@@ -2142,7 +2142,7 @@ export class AgentOrchestrator {
       fileRewindResult = { canRewind: false, error: '无法从 SDK session 中解析 user message UUID' }
     }
 
-    // 2. 截断 Proma JSONL
+    // 2. 截断 Mroma JSONL
     const kept = truncateSDKMessages(sessionId, assistantMessageUuid)
 
     // 3. 记录 resumeAtMessageUuid，下次发消息时 SDK 从此点继续

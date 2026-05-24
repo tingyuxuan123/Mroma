@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/tooltip'
 import { feishuConnectedAtom, sessionFeishuNotifyModeAtom, feishuDefaultNotifyModeAtom } from '@/atoms/feishu-atoms'
 import { cn } from '@/lib/utils'
-import type { FeishuNotifyMode } from '@proma/shared'
+import type { FeishuNotifyMode } from '@mroma/shared'
 
 /** 模式循环顺序 */
 const MODE_CYCLE: FeishuNotifyMode[] = ['auto', 'always', 'off']

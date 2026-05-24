@@ -37,7 +37,7 @@ import { SettingsRow } from './primitives/SettingsRow'
 import { feishuBotStatesAtom, feishuBindingsAtom } from '@/atoms/feishu-atoms'
 import { agentWorkspacesAtom, agentSessionsAtom } from '@/atoms/agent-atoms'
 import { cn } from '@/lib/utils'
-import type { FeishuTestResult, FeishuChatBinding, FeishuBotConfig, FeishuBotBridgeState } from '@proma/shared'
+import type { FeishuTestResult, FeishuChatBinding, FeishuBotConfig, FeishuBotBridgeState } from '@mroma/shared'
 
 // ===== 常量 =====
 
@@ -192,11 +192,11 @@ function FeishuCliSection(): React.ReactElement {
   return (
     <SettingsSection
       title="配置飞书 CLI"
-      description="飞书官方开源的命令行工具，配置后 Proma Agent 将可以直接读消息、查日历、写文档、建多维表格、发邮件，把任务真正落到飞书里完成。"
+      description="飞书官方开源的命令行工具，配置后 Mroma Agent 将可以直接读消息、查日历、写文档、建多维表格、发邮件，把任务真正落到飞书里完成。"
     >
       <SettingsCard divided={false}>
         <div className="px-4 py-4 space-y-2 text-sm text-muted-foreground">
-          <p className="text-xs">复制配置提示词，并前往飞书Bot日常绑定的<strong>工作区</strong>，创建新的 Proma Agent 对话并发送即可让 Proma 协助完成配置。</p>
+          <p className="text-xs">复制配置提示词，并前往飞书Bot日常绑定的<strong>工作区</strong>，创建新的 Mroma Agent 对话并发送即可让 Mroma 协助完成配置。</p>
           <button
             type="button"
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
@@ -410,7 +410,7 @@ function FeishuBindingsTab(): React.ReactElement {
     <div className="space-y-8">
       <SettingsSection
         title="绑定管理"
-        description="查看和管理飞书聊天与 Proma 工作区/会话的绑定关系"
+        description="查看和管理飞书聊天与 Mroma 工作区/会话的绑定关系"
         action={
           <Button
             size="sm"
@@ -909,7 +909,7 @@ function FeishuConfigTab(): React.ReactElement {
             {/* 提示 */}
             <div className="pl-7 p-3 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs">
               版本审核通过并发布后，在飞书中搜索机器人名称添加到聊天，
-              即可通过飞书向 Proma Agent 发送指令。
+              即可通过飞书向 Mroma Agent 发送指令。
             </div>
           </div>
         </SettingsCard>

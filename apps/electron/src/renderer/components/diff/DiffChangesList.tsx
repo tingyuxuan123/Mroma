@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { FileTypeIcon } from '@/components/file-browser/FileTypeIcon'
 import { agentDiffUnseenFilesAtom } from '@/atoms/agent-atoms'
-import type { ChangedFileEntry, ChangeSource, UntrackedFileEntry } from '@proma/shared'
+import type { ChangedFileEntry, ChangeSource, UntrackedFileEntry } from '@mroma/shared'
 
 /** 按目录分组后的数据结构 */
 interface FileGroup {

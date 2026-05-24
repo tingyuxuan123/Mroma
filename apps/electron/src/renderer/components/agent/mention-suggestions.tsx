@@ -12,7 +12,7 @@ import { MessageSquareText, Sparkles, Server } from 'lucide-react'
 import { MentionList } from './MentionList'
 import type { MentionListRef } from './MentionList'
 import { createMentionPopup, positionPopup } from './mention-popup-utils'
-import type { AgentSessionReferenceSearchResult } from '@proma/shared'
+import type { AgentSessionReferenceSearchResult } from '@mroma/shared'
 
 // ===== 泛型工厂 =====
 

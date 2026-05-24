@@ -4,24 +4,24 @@
  * 负责 Electron 特定的操作：
  * - 查找渠道、解密 API Key
  * - 管理 AbortController
- * - 调用 @proma/core 的 Provider 适配器系统
+ * - 调用 @mroma/core 的 Provider 适配器系统
  * - 桥接 StreamEvent → webContents.send()
  * - 持久化消息到 JSONL + 更新索引
  * - 模块化工具的 function calling 循环（通过 ChatToolRegistry + ChatToolExecutor）
  *
- * 纯逻辑（消息转换、SSE 解析、请求构建）已抽象到 @proma/core/providers。
+ * 纯逻辑（消息转换、SSE 解析、请求构建）已抽象到 @mroma/core/providers。
  */
 
 import { randomUUID } from 'node:crypto'
 import type { WebContents } from 'electron'
-import { CHAT_IPC_CHANNELS } from '@proma/shared'
-import type { ChatSendInput, ChatMessage, GenerateTitleInput, FileAttachment, ChatToolActivity } from '@proma/shared'
+import { CHAT_IPC_CHANNELS } from '@mroma/shared'
+import type { ChatSendInput, ChatMessage, GenerateTitleInput, FileAttachment, ChatToolActivity } from '@mroma/shared'
 import {
   getAdapter,
   streamSSE,
   fetchTitle,
-} from '@proma/core'
-import type { ImageAttachmentData, ContinuationMessage } from '@proma/core'
+} from '@mroma/core'
+import type { ImageAttachmentData, ContinuationMessage } from '@mroma/core'
 import { listChannels, decryptApiKey } from './channel-manager'
 import { appendMessage, updateConversationMeta, getConversationMessages } from './conversation-manager'
 import { readAttachmentAsBase64, isImageAttachment } from './attachment-service'

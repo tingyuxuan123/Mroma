@@ -6,7 +6,7 @@
  * - HTTP 长轮询接收消息
  * - 发送消息/输入状态
  *
- * 消息路由到 Proma Agent，回复通过 iLink API 发送。
+ * 消息路由到 Mroma Agent，回复通过 iLink API 发送。
  */
 
 import { BrowserWindow } from 'electron'
@@ -15,8 +15,8 @@ import type {
   WeChatCredentials,
   WeChatIncomingMessage,
   WeChatMessageItem,
-} from '@proma/shared'
-import { WECHAT_IPC_CHANNELS, WECHAT_ITEM_TYPE, WECHAT_MESSAGE_TYPE, WECHAT_MESSAGE_STATE } from '@proma/shared'
+} from '@mroma/shared'
+import { WECHAT_IPC_CHANNELS, WECHAT_ITEM_TYPE, WECHAT_MESSAGE_TYPE, WECHAT_MESSAGE_STATE } from '@mroma/shared'
 import { getDecryptedCredentials, saveWeChatCredentials, clearWeChatCredentials, getWeChatConfig, updateWeChatDefaultWorkspace } from './wechat-config'
 import { getWeChatSyncPath } from './config-paths'
 import { BridgeCommandHandler, type BridgeAttachment } from './bridge-command-handler'
@@ -189,7 +189,7 @@ class ILinkClient {
       msg: {
         from_user_id: this.botId,
         to_user_id: toUserId,
-        client_id: `proma_${Date.now()}`,
+        client_id: `mroma_${Date.now()}`,
         message_type: WECHAT_MESSAGE_TYPE.BOT,
         message_state: WECHAT_MESSAGE_STATE.FINISH,
         item_list: items,
@@ -836,7 +836,7 @@ class WeChatBridge {
     // 确保 binding 存在，保存媒体到会话目录
     const binding = this.commandHandler.ensureBinding(chatId)
     if (!binding) {
-      await this.client.sendText(chatId, '请先在 Proma 设置中选择 Agent 渠道。', contextToken)
+      await this.client.sendText(chatId, '请先在 Mroma 设置中选择 Agent 渠道。', contextToken)
       return
     }
     const workspace = binding.workspaceId ? getAgentWorkspace(binding.workspaceId) : undefined

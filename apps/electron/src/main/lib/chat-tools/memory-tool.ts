@@ -5,8 +5,8 @@
  * 凭据通过 getMemoryConfig() 从 memory.json 读取（Chat + Agent 共用）。
  */
 
-import type { ToolCall, ToolResult, ToolDefinition } from '@proma/core'
-import type { ChatToolMeta } from '@proma/shared'
+import type { ToolCall, ToolResult, ToolDefinition } from '@mroma/core'
+import type { ChatToolMeta } from '@mroma/shared'
 import { getMemoryConfig } from '../memory-service'
 import { searchMemory, addMemory, formatSearchResult } from '../memos-client'
 
@@ -98,7 +98,7 @@ export async function executeMemoryTool(toolCall: ToolCall): Promise<ToolResult>
   const memoryConfig = getMemoryConfig()
   const credentials = {
     apiKey: memoryConfig.apiKey,
-    userId: memoryConfig.userId?.trim() || 'proma-user',
+    userId: memoryConfig.userId?.trim() || 'mroma-user',
     baseUrl: memoryConfig.baseUrl,
   }
 

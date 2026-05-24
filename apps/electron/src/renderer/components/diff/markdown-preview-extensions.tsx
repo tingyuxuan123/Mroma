@@ -11,9 +11,9 @@ import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
 import DOMPurify from 'dompurify'
 import katex from 'katex'
-import { highlightCode, highlightToTokens, getDisplayName } from '@proma/core'
-import type { HighlightTokensResult } from '@proma/core'
-import type { FileAccessOptions } from '@proma/shared'
+import { highlightCode, highlightToTokens, getDisplayName } from '@mroma/core'
+import type { HighlightTokensResult } from '@mroma/core'
+import type { FileAccessOptions } from '@mroma/shared'
 
 type FileAccessRef = { current: FileAccessOptions | undefined }
 /** 传 null 表示当前编辑器无会话/文件上下文（如 ScratchPad），跳过路径解析。 */
@@ -271,7 +271,7 @@ function createShikiDecorationsPlugin(themeRef: ThemeRef): Plugin<ShikiDecoratio
 }
 
 function isExternalUrl(src: string): boolean {
-  return /^(?:https?:|data:|blob:|file:|proma-file:)/i.test(src)
+  return /^(?:https?:|data:|blob:|file:|mroma-file:)/i.test(src)
 }
 
 function sanitizeHtml(html: string): string {
@@ -316,7 +316,7 @@ async function resolveFirstMediaCandidate(paths: string[], fileAccessRef: FileAc
 }
 
 function resolveMediaSrc(src: string, fileAccessRef: FileAccessRefOrNull, apply: (src: string) => void): () => void {
-  // 外链 / data-URL / blob / 已授权 proma-file 协议：直接 apply，不走 IPC
+  // 外链 / data-URL / blob / 已授权 mroma-file 协议：直接 apply，不走 IPC
   if (!src || isExternalUrl(src)) {
     apply(src)
     return () => {}

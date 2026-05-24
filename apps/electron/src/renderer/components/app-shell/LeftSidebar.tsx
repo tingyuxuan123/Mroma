@@ -97,7 +97,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import type { ActiveView } from '@/atoms/active-view'
-import type { ConversationMeta, AgentSessionMeta, WorkspaceCapabilities } from '@proma/shared'
+import type { ConversationMeta, AgentSessionMeta, WorkspaceCapabilities } from '@mroma/shared'
 
 interface SidebarItemProps {
   icon: React.ReactNode

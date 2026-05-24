@@ -1,7 +1,7 @@
 /**
  * ScratchPadView — 草稿本编辑器
  *
- * 基于 TipTap 的轻量 Markdown 编辑器，内容持久化到 ~/.proma/scratch-pad.md。
+ * 基于 TipTap 的轻量 Markdown 编辑器，内容持久化到 ~/.mroma/scratch-pad.md。
  * 自动保存由 ScratchPadPersistence 组件通过监听 scratchPadContentAtom 统一管理。
  *
  * 支持：Markdown 快捷输入、图片粘贴、Todo 列表（- [ ] 触发）、代码高亮（lowlight）、数学公式（$..$ / $$..$$ 触发）、导出为 Markdown

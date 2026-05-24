@@ -21,7 +21,7 @@ import {
   X,
   RefreshCw,
 } from 'lucide-react'
-import type { SkillFileNode, SkillFileContent } from '@proma/shared'
+import type { SkillFileNode, SkillFileContent } from '@mroma/shared'
 import { Button } from '@/components/ui/button'
 import { SettingsCard } from './primitives'
 import { cn } from '@/lib/utils'

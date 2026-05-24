@@ -9,7 +9,7 @@ import * as React from 'react'
 import { ArrowLeft, Loader2, CheckCircle2, XCircle, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import type { McpServerEntry, McpTransportType, WorkspaceMcpConfig } from '@proma/shared'
+import type { McpServerEntry, McpTransportType, WorkspaceMcpConfig } from '@mroma/shared'
 import {
   SettingsSection,
   SettingsCard,

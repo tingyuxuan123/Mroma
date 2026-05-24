@@ -2,8 +2,8 @@
  * Agent 会话管理器
  *
  * 负责 Agent 会话的 CRUD 操作和消息持久化。
- * - 会话索引：~/.proma/agent-sessions.json（轻量元数据）
- * - 消息存储：~/.proma/agent-sessions/{id}.jsonl（JSONL 格式，逐行追加）
+ * - 会话索引：~/.mroma/agent-sessions.json（轻量元数据）
+ * - 消息存储：~/.mroma/agent-sessions/{id}.jsonl（JSONL 格式，逐行追加）
  *
  * 照搬 conversation-manager.ts 的模式。
  */
@@ -36,7 +36,7 @@ import type {
   AgentMessageSearchResult,
   AgentSessionReferenceSearchInput,
   AgentSessionReferenceSearchResult,
-} from '@proma/shared'
+} from '@mroma/shared'
 import { getConversationMessages } from './conversation-manager'
 import { clearNanoBananaAgentHistory } from './chat-tools/nano-banana-mcp'
 
@@ -642,7 +642,7 @@ export async function forkAgentSession(input: ForkSessionInput): Promise<AgentSe
 
   // 2.5 校验目标消息并确定其所属的 SDK session ID
   // - 当会话经历过 "session not found" 恢复后，sdkSessionId 会被替换为新的，
-  //   但旧消息仍保留在 Proma JSONL 中，其 session_id 指向旧的 SDK session。
+  //   但旧消息仍保留在 Mroma JSONL 中，其 session_id 指向旧的 SDK session。
   // - 若目标消息是 sub-agent 输出（parent_tool_use_id 非空），SDK forkSession
   //   会过滤掉 sidechain 后再查 upToMessageId，必然报 "not found"，
   //   这里自动回溯到最近的主线 assistant uuid。
@@ -723,7 +723,7 @@ export async function forkAgentSession(input: ForkSessionInput): Promise<AgentSe
     }
   }
 
-  // 4. 创建 Proma 新会话，立即设置 sdkSessionId
+  // 4. 创建 Mroma 新会话，立即设置 sdkSessionId
   const forkTitle = `${sourceMeta.title} (fork)`
   const newMeta = createAgentSession(
     forkTitle,
@@ -778,7 +778,7 @@ export async function forkAgentSession(input: ForkSessionInput): Promise<AgentSe
 
   // 5. 复制源会话工作区文件到新会话目录
   // 仅排除 .claude/（settings.json 启动时会重建）、.DS_Store、.git。
-  // .context/ 必须保留 — Proma 约定 .context/note.md、todo.md、plan/ 等是会话上下文，
+  // .context/ 必须保留 — Mroma 约定 .context/note.md、todo.md、plan/ 等是会话上下文，
   // 如果不复制，fork 后这些参考资料会丢失或被 Claude 误回源目录读取。
   if (sourceDir && destDir) {
     if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true })
@@ -918,11 +918,11 @@ export function truncateSDKMessages(id: string, upToUuidInclusive: string): SDKM
 /**
  * 从 SDK session JSONL 中查找指定 assistant message 之后最近的 user message UUID
  *
- * SDK session JSONL（~/.proma/sdk-config/projects/...）中的消息都带有 uuid，
- * 但 Proma 自己构造的 user message 没有 uuid。此函数直接读取 SDK 的 JSONL
+ * SDK session JSONL（~/.mroma/sdk-config/projects/...）中的消息都带有 uuid，
+ * 但 Mroma 自己构造的 user message 没有 uuid。此函数直接读取 SDK 的 JSONL
  * 来解析 rewindFiles 所需的 user message UUID。
  *
- * 对于 fork 会话：Proma JSONL 中的 UUID 来自**源会话**（fork 时直接复制），
+ * 对于 fork 会话：Mroma JSONL 中的 UUID 来自**源会话**（fork 时直接复制），
  * 而 forked SDK JSONL 中的 UUID 已被重映射。因此 fork 会话需要搜索**源**
  * SDK JSONL 来匹配 assistant UUID。通过 forkSourceSdkSessionId 参数指定。
  *
@@ -953,7 +953,7 @@ export function resolveUserUuidFromSDK(
         } catch { return false }
       })
       if (!hasUuidAsField) {
-        // Proma JSONL 中的 UUID 来自源会话，forked JSONL 中已重映射
+        // Mroma JSONL 中的 UUID 来自源会话，forked JSONL 中已重映射
         const sourceFilePath = findSdkSessionJsonl(forkSourceSdkSessionId, projectDir)
         if (sourceFilePath) {
           console.log(`[Agent 会话] resolveUserUuid: fork 会话 UUID 不匹配（非 .uuid 字段），切换到源会话 ${forkSourceSdkSessionId}`)
@@ -1033,7 +1033,7 @@ function findSdkSessionJsonl(sdkSessionId: string, _projectDir?: string): string
   const sdkConfigDir = getSdkConfigDir()
 
   // 遍历所有项目目录查找匹配的 session JSONL
-  // （SDK 的目录命名规则与 Proma 不完全一致，直接遍历最可靠）
+  // （SDK 的目录命名规则与 Mroma 不完全一致，直接遍历最可靠）
   const projectsDir = join(sdkConfigDir, 'projects')
   if (existsSync(projectsDir)) {
     for (const dir of readdirSync(projectsDir)) {

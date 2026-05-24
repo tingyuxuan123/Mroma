@@ -1,5 +1,5 @@
 {
-  "name": "proma",
+  "name": "mroma",
   "version": "0.1.0",
   "description": "The next gen ai software with general agents",
   "type": "module",
@@ -9,10 +9,10 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "bun run --filter='@proma/electron' dev",
-    "electron:dev": "bun run --filter='@proma/electron' dev",
-    "electron:build": "bun run --filter='@proma/electron' build",
-    "electron:start": "bun run --filter='@proma/electron' start",
+    "dev": "bun run --filter='@mroma/electron' dev",
+    "electron:dev": "bun run --filter='@mroma/electron' dev",
+    "electron:build": "bun run --filter='@mroma/electron' build",
+    "electron:start": "bun run --filter='@mroma/electron' start",
     "build": "bun run --filter='*' build",
     "typecheck": "bun run --filter='*' typecheck",
     "test": "bun test"

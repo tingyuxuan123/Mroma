@@ -326,7 +326,7 @@
   app-region: drag;
 }
 
-/* Windows 自定义窗口控制按钮
+/* Linux / Windows 自定义窗口控制按钮
  *
  * 可点击性关键点（解决 Windows 用户点击失效 / 需要双击的 bug）：
  * 1. 容器本身就是 no-drag 矩形，不靠"在 drag 区里挖三个小洞"——避免 Chromium hitmask
@@ -365,6 +365,13 @@
 
 .window-control-btn:active {
   background-color: hsl(var(--muted) / 0.5);
+}
+
+.window-controls-linux {
+  top: 8px;
+  height: 28px;
+  gap: 1px;
+  align-items: center;
 }
 
 .window-control-close:hover {

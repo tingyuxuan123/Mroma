@@ -1,18 +1,20 @@
 /**
- * WindowControls - Windows 自定义窗口控制按钮（最小化/最大化/关闭）
- * 仅 Windows 平台渲染，替换 Electron 原生 titleBarOverlay 按钮。
+ * WindowControls - 自定义窗口控制按钮（最小化/最大化/关闭）
+ * Linux / Windows 渲染，替换系统原生标题栏，让标题栏跟随应用主题。
  */
 
 import * as React from 'react'
-import { detectIsWindows } from '@/lib/platform'
+import { detectIsLinux, detectIsMac } from '@/lib/platform'
+import { cn } from '@/lib/utils'
 
 export function WindowControls(): React.ReactElement | null {
-  const isWindows = React.useMemo(() => detectIsWindows(), [])
+  const isMac = React.useMemo(() => detectIsMac(), [])
+  const isLinux = React.useMemo(() => detectIsLinux(), [])
   const [isMaximized, setIsMaximized] = React.useState(false)
 
   // 初始化最大化状态并监听窗口 resize 事件
   React.useEffect(() => {
-    if (!isWindows) return
+    if (isMac) return
     window.electronAPI.windowIsMaximized().then(setIsMaximized)
     const unsub = window.electronAPI.onWindowResize(() => {
       window.electronAPI.windowIsMaximized().then((next) => {
@@ -23,16 +25,21 @@ export function WindowControls(): React.ReactElement | null {
       })
     })
     return unsub
-  }, [isWindows])
+  }, [isMac])
 
-  if (!isWindows) return null
+  if (isMac) return null
 
   return (
-    <div className="window-controls fixed top-[8px] right-[8px] z-[100] flex select-none">
+    <div
+      className={cn(
+        'window-controls fixed top-[8px] z-[100] flex select-none',
+        isLinux ? 'window-controls-linux left-[14px]' : 'right-[8px]',
+      )}
+    >
       {/* 最小化 */}
       <button
         type="button"
-        className="window-control-btn"
+        className="window-control-btn window-control-minimize"
         aria-label="最小化"
         onClick={() => window.electronAPI.windowMinimize()}
       >
@@ -44,7 +51,7 @@ export function WindowControls(): React.ReactElement | null {
       {/* 最大化/还原 */}
       <button
         type="button"
-        className="window-control-btn"
+        className="window-control-btn window-control-maximize"
         aria-label={isMaximized ? '还原' : '最大化'}
         onClick={() => window.electronAPI.windowMaximize()}
       >

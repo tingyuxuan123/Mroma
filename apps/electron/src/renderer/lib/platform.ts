@@ -17,3 +17,13 @@ export function detectIsMac(): boolean {
   }
   return typeof navigator !== 'undefined' && /mac/i.test(navigator.platform || '')
 }
+
+export function detectIsLinux(): boolean {
+  const platform =
+    typeof navigator !== 'undefined' &&
+    (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform
+  if (typeof platform === 'string' && platform.toLowerCase().includes('linux')) {
+    return true
+  }
+  return typeof navigator !== 'undefined' && /linux/i.test(navigator.platform || '')
+}

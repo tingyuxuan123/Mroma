@@ -15,7 +15,7 @@ import { AppShellProvider, type AppShellContextType } from '@/contexts/AppShellC
 import { appModeAtom } from '@/atoms/app-mode'
 import { agentSidePanelWidthAtom, currentAgentSessionIdAtom, currentSessionSidePanelOpenAtom } from '@/atoms/agent-atoms'
 import { WindowControls } from '@/components/WindowControls'
-import { detectIsWindows } from '@/lib/platform'
+import { detectIsLinux, detectIsMac } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 
 const MIN_RIGHT_PANEL_WIDTH = 220
@@ -35,7 +35,8 @@ export function AppShell({ contextValue }: AppShellProps): React.ReactElement {
   const currentSessionId = useAtomValue(currentAgentSessionIdAtom)
   const isPanelOpen = useAtomValue(currentSessionSidePanelOpenAtom)
   const showRightPanel = appMode === 'agent' && !!currentSessionId
-  const isWindows = React.useMemo(() => detectIsWindows(), [])
+  const isMac = React.useMemo(() => detectIsMac(), [])
+  const isLinux = React.useMemo(() => detectIsLinux(), [])
 
   // 右侧面板可拖拽宽度
   const [rightPanelWidth, setRightPanelWidth] = useAtom(agentSidePanelWidthAtom)
@@ -80,22 +81,22 @@ export function AppShell({ contextValue }: AppShellProps): React.ReactElement {
   return (
     <AppShellProvider value={contextValue}>
       {/* 可拖动标题栏区域，用于窗口拖动。
-          Windows 上必须避开右上角的 WindowControls 区域（buttons ~118px + 8px buffer = 126px），
+          Linux / Windows 上必须避开右上角的 WindowControls 区域（buttons ~118px + 8px buffer = 126px），
           否则 drag-region 与按钮区的 hitmask 重叠会让 OS 把单击当成标题栏点击，
           表现为"按钮要双击才响应"。 */}
       <div
         className={cn(
           'titlebar-drag-region fixed top-0 left-0 h-[50px] z-50',
-          isWindows ? 'right-[126px]' : 'right-0'
+          isMac ? 'right-0' : isLinux ? 'left-[126px] right-0' : 'right-[126px]'
         )}
       />
 
-      {/* Windows 自定义窗口控制按钮（最小化/最大化/关闭） */}
+      {/* Linux / Windows 自定义窗口控制按钮（最小化/最大化/关闭） */}
       <WindowControls />
 
       <div className="shell-bg h-screen w-screen flex overflow-hidden bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-zinc-950 dark:to-zinc-900">
         {/* 左侧边栏：可折叠，带圆角和内边距 */}
-        <div className="p-2 pr-0 relative z-[60]">
+        <div className={cn('p-2 pr-0 relative z-[60]', isLinux && 'pt-12')}>
           <LeftSidebar />
         </div>
 

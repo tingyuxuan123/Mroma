@@ -260,7 +260,6 @@ function createWindow(): void {
   }
 
   const isMac = process.platform === 'darwin'
-  const isWindows = process.platform === 'win32'
 
   const titleBarOptions = isMac
     ? {
@@ -269,9 +268,7 @@ function createWindow(): void {
         vibrancy: 'under-window' as const,
         visualEffectState: 'followWindow' as const,
       }
-    : isWindows
-      ? { titleBarStyle: 'hidden' as const }
-      : {}
+    : { titleBarStyle: 'hidden' as const }
 
   const savedState = getSettings().mainWindowState
   const initialBounds = savedState
@@ -284,6 +281,7 @@ function createWindow(): void {
     minHeight: 600,
     icon: iconExists ? iconPath : undefined,
     show: false,
+    autoHideMenuBar: !isMac,
     webPreferences: {
       preload: join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -291,6 +289,9 @@ function createWindow(): void {
     },
     ...titleBarOptions,
   })
+  if (!isMac) {
+    mainWindow.setMenu(null)
+  }
   installWindowsZoomInFallback(mainWindow)
 
   // Load the renderer
@@ -403,9 +404,13 @@ async function bootstrap(): Promise<void> {
   // 升级所有工作区中版本过旧的默认 Skills
   safeRun('upgradeDefaultSkillsInWorkspaces', upgradeDefaultSkillsInWorkspaces)
 
-  // Create application menu
-  const menu = createApplicationMenu()
-  Menu.setApplicationMenu(menu)
+  // macOS 保留系统应用菜单；Linux/Windows 使用自定义标题栏，不显示原生菜单栏。
+  if (process.platform === 'darwin') {
+    const menu = createApplicationMenu()
+    Menu.setApplicationMenu(menu)
+  } else {
+    Menu.setApplicationMenu(null)
+  }
 
   // Register IPC handlers
   registerIpcHandlers()

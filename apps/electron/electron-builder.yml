@@ -130,6 +130,7 @@ nsis:
 linux:
   icon: resources/icon.png
   category: Development
+  executableName: mroma
   target:
     - target: AppImage
       arch:

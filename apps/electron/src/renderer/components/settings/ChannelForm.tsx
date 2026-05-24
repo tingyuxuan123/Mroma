@@ -22,6 +22,11 @@ import {
   Zap,
   Download,
   Search,
+  ChevronDown,
+  ChevronRight,
+  Settings2,
+  ImageIcon,
+  Gauge,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSetAtom } from 'jotai'
@@ -40,6 +45,7 @@ import type {
   ChannelModel,
   ChannelTestResult,
   FetchModelsResult,
+  ModelAdvancedConfig,
   ProviderType,
 } from '@proma/shared'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -156,6 +162,9 @@ export function ChannelForm({ channel, onSaved, onAgentEligibilityChange, onCanc
 
   // 模型搜索过滤
   const [modelFilter, setModelFilter] = React.useState('')
+
+  // 模型高级配置展开状态
+  const [expandedModelId, setExpandedModelId] = React.useState<string | null>(null)
 
   // UI 状态
   const [saving, setSaving] = React.useState(false)
@@ -364,6 +373,31 @@ export function ChannelForm({ channel, onSaved, onAgentEligibilityChange, onCanc
     } finally {
       setTesting(false)
     }
+  }
+
+  /** 更新模型高级配置 */
+  const handleAdvancedConfigChange = (modelId: string, patch: Partial<ModelAdvancedConfig>): void => {
+    setModels((prev) =>
+      prev.map((m) => {
+        if (m.id !== modelId) return m
+        const currentConfig = m.advancedConfig ?? {}
+        return {
+          ...m,
+          advancedConfig: {
+            ...currentConfig,
+            ...patch,
+          },
+        }
+      }),
+    )
+  }
+
+  /** 格式化 token 数量为可读文本 */
+  const formatTokenValue = (value: number | undefined): string => {
+    if (value === undefined) return ''
+    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(value % 1_000_000 === 0 ? 0 : 1)}M`
+    if (value >= 1_000) return `${(value / 1_000).toFixed(value % 1_000 === 0 ? 0 : 1)}K`
+    return String(value)
   }
 
   /** 执行创建渠道 */
@@ -586,28 +620,172 @@ export function ChannelForm({ channel, onSaved, onAgentEligibilityChange, onCanc
             </div>
           ) : (
             <div className="divide-y divide-border/50">
-              {enabledModels.map((model) => (
-                <div
-                  key={model.id}
-                  className="flex items-center gap-2 px-4 py-2.5 group"
-                >
-                  <CheckCircle2 size={14} className="text-emerald-500 flex-shrink-0" />
-                  <span className="text-sm text-foreground flex-1">
-                    {model.name}
-                    {model.name !== model.id && (
-                      <span className="text-muted-foreground ml-1">({model.id})</span>
+              {enabledModels.map((model) => {
+                const isExpanded = expandedModelId === model.id
+                const cfg = model.advancedConfig
+                const hasConfig = cfg && (
+                  cfg.contextTokenLimit !== undefined ||
+                  cfg.maxOutputTokens !== undefined ||
+                  cfg.supportsImage === true ||
+                  cfg.supportsFast === true ||
+                  cfg.enableExtendedContext === true
+                )
+                return (
+                  <div key={model.id}>
+                    {/* 模型标题行 */}
+                    <div className="flex items-center gap-2 px-4 py-2.5 group">
+                      <CheckCircle2 size={14} className="text-emerald-500 flex-shrink-0" />
+                      <span className="text-sm text-foreground flex-1">
+                        {model.name}
+                        {model.name !== model.id && (
+                          <span className="text-muted-foreground ml-1">({model.id})</span>
+                        )}
+                        {/* 配置摘要标签 */}
+                        {hasConfig && !isExpanded && (
+                          <span className="ml-2 text-xs text-muted-foreground/70">
+                            {cfg.contextTokenLimit !== undefined && `上下文 ${formatTokenValue(cfg.contextTokenLimit)}`}
+                            {cfg.contextTokenLimit !== undefined && cfg.maxOutputTokens !== undefined && ' · '}
+                            {cfg.maxOutputTokens !== undefined && `输出 ${formatTokenValue(cfg.maxOutputTokens)}`}
+                            {cfg.supportsImage === true && ' · 图像'}
+                            {cfg.supportsFast === true && ' · 快速'}
+                            {cfg.enableExtendedContext === true && ' · 1M'}
+                          </span>
+                        )}
+                      </span>
+                      {/* 高级配置按钮 */}
+                      <button
+                        type="button"
+                        onClick={() => setExpandedModelId(isExpanded ? null : model.id)}
+                        className={cn(
+                          'p-1 rounded transition-colors',
+                          isExpanded
+                            ? 'text-primary bg-primary/10'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 opacity-0 group-hover:opacity-100',
+                        )}
+                        title="高级配置"
+                      >
+                        <Settings2 size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleToggleModel(model.id)
+                          if (isExpanded) setExpandedModelId(null)
+                        }}
+                        className="p-0.5 text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
+                        title="取消启用"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+
+                    {/* 高级配置面板 */}
+                    {isExpanded && (
+                      <div className="px-4 pb-3 pt-0 ml-6 space-y-3 border-l-2 border-primary/20 pl-4">
+                        {/* 上下文窗口大小 */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <Gauge size={13} className="text-muted-foreground" />
+                            <span className="text-xs font-medium text-foreground">Context Token Limit</span>
+                          </div>
+                          <Input
+                            type="number"
+                            value={cfg?.contextTokenLimit ?? ''}
+                            onChange={(e) => {
+                              const v = e.target.value
+                              handleAdvancedConfigChange(model.id, {
+                                contextTokenLimit: v === '' ? undefined : Number(v),
+                              })
+                            }}
+                            placeholder="如 200000 或 1000000（1M）"
+                            className="h-8 text-sm"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            上下文窗口大小（token 数）。留空则使用模型默认值
+                          </p>
+                        </div>
+
+                        {/* 最大输出长度 */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <Gauge size={13} className="text-muted-foreground" />
+                            <span className="text-xs font-medium text-foreground">Max Output Tokens</span>
+                          </div>
+                          <Input
+                            type="number"
+                            value={cfg?.maxOutputTokens ?? ''}
+                            onChange={(e) => {
+                              const v = e.target.value
+                              handleAdvancedConfigChange(model.id, {
+                                maxOutputTokens: v === '' ? undefined : Number(v),
+                              })
+                            }}
+                            placeholder="如 128000 或 16384"
+                            className="h-8 text-sm"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            单次请求最大输出长度（token 数）。留空则使用模型默认值
+                          </p>
+                        </div>
+
+                        {/* 能力开关 */}
+                        <div className="flex flex-wrap gap-2">
+                          {/* 图像支持 */}
+                          <button
+                            type="button"
+                            onClick={() => handleAdvancedConfigChange(model.id, {
+                              supportsImage: cfg?.supportsImage === true ? undefined : true,
+                            })}
+                            className={cn(
+                              'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs transition-colors border',
+                              cfg?.supportsImage === true
+                                ? 'bg-primary/10 border-primary/30 text-primary'
+                                : 'bg-muted/50 border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted',
+                            )}
+                          >
+                            <ImageIcon size={12} />
+                            <span>图像支持</span>
+                          </button>
+
+                          {/* Fast 模式 */}
+                          <button
+                            type="button"
+                            onClick={() => handleAdvancedConfigChange(model.id, {
+                              supportsFast: cfg?.supportsFast === true ? undefined : true,
+                            })}
+                            className={cn(
+                              'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs transition-colors border',
+                              cfg?.supportsFast === true
+                                ? 'bg-amber-500/10 border-amber-500/30 text-amber-600'
+                                : 'bg-muted/50 border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted',
+                            )}
+                          >
+                            <Zap size={12} />
+                            <span>Fast 模式</span>
+                          </button>
+
+                          {/* 1M 扩展上下文 */}
+                          <button
+                            type="button"
+                            onClick={() => handleAdvancedConfigChange(model.id, {
+                              enableExtendedContext: cfg?.enableExtendedContext === true ? undefined : true,
+                            })}
+                            className={cn(
+                              'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs transition-colors border',
+                              cfg?.enableExtendedContext === true
+                                ? 'bg-violet-500/10 border-violet-500/30 text-violet-600'
+                                : 'bg-muted/50 border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted',
+                            )}
+                          >
+                            <span className="text-[11px] font-semibold">1M</span>
+                            <span>扩展上下文</span>
+                          </button>
+                        </div>
+                      </div>
                     )}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleToggleModel(model.id)}
-                    className="p-0.5 text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
-                    title="取消启用"
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-              ))}
+                  </div>
+                )
+              })}
             </div>
           )}
         </SettingsCard>

@@ -77,6 +77,25 @@ export function isAgentCompatibleProvider(provider: ProviderType): boolean {
 }
 
 /**
+ * 模型高级配置
+ *
+ * 每个模型可独立配置上下文窗口、输出限制、能力开关等。
+ * 不设置时（undefined）表示使用默认值或自动推断。
+ */
+export interface ModelAdvancedConfig {
+  /** 上下文窗口大小（token 数），如 1000000 = 1M */
+  contextTokenLimit?: number
+  /** 单次最大输出长度（token 数），如 128000 */
+  maxOutputTokens?: number
+  /** 是否支持图像输入 */
+  supportsImage?: boolean
+  /** 是否支持 fast 模式（部分模型有快速推理变体） */
+  supportsFast?: boolean
+  /** 是否开启扩展上下文（如 1M context） */
+  enableExtendedContext?: boolean
+}
+
+/**
  * 渠道中的模型配置
  */
 export interface ChannelModel {
@@ -86,6 +105,8 @@ export interface ChannelModel {
   name: string
   /** 是否启用 */
   enabled: boolean
+  /** 模型高级配置 */
+  advancedConfig?: ModelAdvancedConfig
 }
 
 /**

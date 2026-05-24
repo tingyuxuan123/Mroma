@@ -43,10 +43,9 @@ const eventBus = new AgentEventBus()
  *
  * - Anthropic 协议兼容渠道（anthropic / deepseek / kimi-api / kimi-coding / minimax）
  *   走 ClaudeAgentAdapter（基于 @anthropic-ai/claude-agent-sdk）
- * - openai-chat / openai-responses 渠道走 CodexAgentAdapter（基于 @openai/codex-sdk）
- *   - openai-chat：在 CodexAgentAdapter 内自动注入 wire_api = "chat" 适配 OpenAI 兼容端点
- *   - openai-responses：走 codex 默认 Responses API（wss + /v1/responses，仅 OpenAI 官方）
- * - 其他 provider 在 Agent 模式下不可用，UI 已通过 isAgentCompatibleProvider() 过滤
+ * - openai-responses 渠道走 CodexAgentAdapter（基于 @openai/codex-sdk，Responses API）
+ * - openai-chat 渠道 **仅在 Chat 模式可用**，不接入 Agent；UI 已通过 isAgentCompatibleProvider() 过滤
+ * - 其他 provider 在 Agent 模式下不可用
  *
  * 懒加载：实际选用某后端时才实例化对应 adapter。
  */
@@ -55,7 +54,7 @@ const adapterCache = new Map<AgentBackend, AgentProviderAdapter>()
 
 /** 把 provider 映射为内部 backend 标识 */
 function resolveBackend(provider: ProviderType): AgentBackend {
-  return provider === 'openai-chat' || provider === 'openai-responses' ? 'codex' : 'claude'
+  return provider === 'openai-responses' ? 'codex' : 'claude'
 }
 
 function getAgentAdapter(provider: ProviderType): AgentProviderAdapter {

@@ -413,20 +413,20 @@ Mroma Agent 模式由 **AgentOrchestrator** 统一编排，底层通过 **AgentP
 |---------------|---------|----------|------|-------------|
 | anthropic / deepseek / kimi-api / kimi-coding / minimax | `ClaudeAgentAdapter` | `@anthropic-ai/claude-agent-sdk@0.3.143` | Anthropic Messages | 内置平台子包（claude / claude.exe） |
 | `openai-responses` | `CodexAgentAdapter` | `@openai/codex-sdk@0.133.0` | OpenAI Responses API（wss + /v1/responses） | **需用户全局安装 `codex` CLI** |
-| `openai-chat` | `CodexAgentAdapter` | `@openai/codex-sdk@0.133.0` | OpenAI Chat Completions（codex `wire_api="chat"` + 自定义 model_provider） | **需用户全局安装 `codex` CLI** |
 
-**OpenAI 系协议归类（2026-05 重构）**：原先的 `openai` / `custom` / `codex` 三个 provider 合并为按协议命名的 `openai-chat` / `openai-responses`。`openai-chat` 适配任意 OpenAI Chat Completions 兼容端点（小米 MiMo / 智谱 / 豆包 / 第三方代理），`openai-responses` 仅适合 OpenAI 官方或同样实现 Responses API 的端点。`channel-manager.readConfig()` 会自动迁移老版 channels.json（`LEGACY_PROVIDER_MAPPING` 映射表 + 一次性回写）。
+**OpenAI 系协议归类（2026-05 重构）**：原先的 `openai` / `custom` / `codex` 三个 provider 合并为按协议命名的 `openai-chat` / `openai-responses`：
+- `openai-chat`（Chat Completions 协议）**仅 Chat 模式可用**，不在 `AGENT_COMPATIBLE_PROVIDERS` 中。背景：codex CLI 在 2026-02 PR #10157 起彻底移除 `wire_api = "chat"` 支持，凡是只实现 Chat Completions 协议的第三方端点（小米 MiMo / 智谱 / 豆包 / DeepSeek 兼容代理等）都无法直接接入 codex；如需在 Agent 模式使用，需自行运维 community proxy（如 `va-ai-api-bridge`）在本地把 Responses 翻译成 Chat，并把渠道用 `openai-responses` 指向 proxy 地址。
+- `openai-responses` 走 codex 默认的 Responses API，仅 OpenAI 官方或同样实现 Responses 的端点（LM Studio 等）可用。
+- `channel-manager.readConfig()` 会自动迁移老版 channels.json（`LEGACY_PROVIDER_MAPPING` 映射表 + 一次性回写）。注意：老的 `codex` 渠道默认迁移为 `openai-responses`，如果指向的是 Chat Completions 兼容端点，需要用户手动改成 `openai-chat`（同时 Agent 模式不再可用）。
 
-`agent-service.ts` 通过 `resolveBackend(provider) → 'claude' | 'codex'` 决定走哪个 adapter；orchestrator 在 `sendMessage` 中判断 `isCodex = provider === 'openai-chat' || 'openai-responses'`，Codex 路径跳过 Claude SDK 特定步骤（resolveSDKCliPath、import claude SDK、.claude/settings.json 创建、MCP server 注入、agents/effort/thinking/canUseTool 等字段）。
+`agent-service.ts` 通过 `resolveBackend(provider) → 'claude' | 'codex'` 决定走哪个 adapter；orchestrator 在 `sendMessage` 中判断 `isCodex = provider === 'openai-responses'`，Codex 路径跳过 Claude SDK 特定步骤（resolveSDKCliPath、import claude SDK、.claude/settings.json 创建、MCP server 注入、agents/effort/thinking/canUseTool 等字段）。
 
 ### Codex Adapter（`adapters/codex-agent-adapter.ts`）
 
 - **依赖**：动态 import `@openai/codex-sdk`，未安装时不阻断启动，仅在用户选择 Codex 渠道发起请求时触发
 - **CLI 二进制**：codex-sdk 通过系统 PATH 解析 `codex` 可执行文件，**MVP 阶段要求用户自行安装**（暂未内嵌 binary 到 Electron 包）
-- **协议选择**：通过 `env.MROMA_CODEX_WIRE_API` 旁路传入 `'chat' | 'responses'`（orchestrator 的 `buildSdkEnv` 根据 provider 注入）
-  - `chat`：向 codex CLI 下发自定义 `model_providers.mroma_custom_chat = { base_url, wire_api: 'chat', env_key: 'OPENAI_API_KEY' }` + `model_provider = 'mroma_custom_chat'`，把请求改成 POST `/chat/completions`，兼容任意 OpenAI Chat 端点
-  - `responses`：保留 codex 默认的 openai provider，走 wss + `/v1/responses`
-- **认证**：env / `apiKey` 选项注入 `CODEX_API_KEY` + `OPENAI_API_KEY`；自定义 `baseUrl` 在 chat 模式下写入 `model_providers.*.base_url`，在 responses 模式下走 SDK 的 `baseUrl` 选项（=`--config openai_base_url=...`）
+- **协议**：仅 Responses API（wss + `/v1/responses`）。曾尝试用 `wire_api = "chat"` + 自定义 `model_providers.*` 适配 Chat Completions 端点，但 codex 自 2026-02 PR #10157 起彻底移除此能力，相关代码已回退。
+- **认证**：env / `apiKey` 选项注入 `CODEX_API_KEY` + `OPENAI_API_KEY`；自定义 `baseUrl` 通过 SDK 的 `baseUrl` 选项 → `--config openai_base_url=...`
 - **事件映射**：
   - `thread.started` → `SDKSystemMessage{subtype:'init',session_id}`，捕获 thread_id 作为 sdkSessionId
   - `item.completed` 按 type 分发：`agent_message` → text block；`reasoning` → thinking block；`command_execution` → Bash tool_use + tool_result 对；`file_change` → Edit tool_use + 结果；`mcp_tool_call` → 工具调用对；`web_search` → WebSearch；`plan_update`/`todo_list` → TaskUpdate

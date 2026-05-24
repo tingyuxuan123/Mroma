@@ -59,8 +59,8 @@ export const PROVIDER_DEFAULT_URLS: Record<ProviderType, string> = {
  */
 export const PROVIDER_LABELS: Record<ProviderType, string> = {
   anthropic: 'Anthropic',
-  'openai-chat': 'OpenAI Chat Completions',
-  'openai-responses': 'OpenAI Responses (Codex)',
+  'openai-chat': 'OpenAI Chat Completions（仅 Chat 模式）',
+  'openai-responses': 'OpenAI Responses / Codex（Chat + Agent）',
   deepseek: 'DeepSeek',
   google: 'Google',
   'kimi-api': 'Kimi API (Anthropic 协议)',
@@ -76,9 +76,13 @@ export const PROVIDER_LABELS: Record<ProviderType, string> = {
  *
  * - Anthropic 协议兼容渠道（anthropic / deepseek / kimi-api / kimi-coding / minimax）
  *   通过 Claude Agent SDK 调用 `/v1/messages`
- * - openai-responses 通过 OpenAI Codex SDK 走 Responses API（wss + /v1/responses，仅 OpenAI 官方端点支持）
- * - openai-chat 通过 OpenAI Codex SDK 走 Chat Completions API（wire_api = "chat"），
- *   支持任意 OpenAI Chat Completions 兼容端点（小米 MiMo / 智谱 / 豆包 / 第三方代理等）
+ * - openai-responses 通过 OpenAI Codex SDK 走 Responses API（wss + /v1/responses）
+ *
+ * 不在此集合中的 OpenAI 系渠道：
+ * - openai-chat（仅 Chat 模式可用）：Codex CLI 自 2026-02 起移除 `wire_api = "chat"`，
+ *   故凡是只实现 Chat Completions 协议的端点（小米 MiMo / 智谱 / 豆包 / 第三方代理等）
+ *   都无法接入 Agent 模式。如需接入需自行运维 community proxy（如 va-ai-api-bridge）
+ *   在本地把 Responses 翻译成 Chat，并把渠道改用 openai-responses 指向该 proxy。
  */
 export const AGENT_COMPATIBLE_PROVIDERS: ReadonlySet<ProviderType> = new Set<ProviderType>([
   'anthropic',
@@ -86,7 +90,6 @@ export const AGENT_COMPATIBLE_PROVIDERS: ReadonlySet<ProviderType> = new Set<Pro
   'kimi-api',
   'kimi-coding',
   'minimax',
-  'openai-chat',
   'openai-responses',
 ])
 

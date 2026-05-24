@@ -28,15 +28,24 @@ import { useConversationIdOptional } from '@/contexts/session-context'
 import { getModelLogo, getChannelLogo } from '@/lib/model-logo'
 import { cn } from '@/lib/utils'
 import type { Channel, ModelOption } from '@mroma/shared'
+import { isAgentCompatibleProvider } from '@mroma/shared'
 
 /** 从渠道列表构建扁平化的模型选项 */
-function buildModelOptions(channels: Channel[], filterChannelId?: string, filterChannelIds?: string[]): ModelOption[] {
+function buildModelOptions(
+  channels: Channel[],
+  filterChannelId?: string,
+  filterChannelIds?: string[],
+  agentOnly?: boolean,
+): ModelOption[] {
   const options: ModelOption[] = []
 
   for (const channel of channels) {
     if (!channel.enabled) continue
     if (filterChannelId && channel.id !== filterChannelId) continue
     if (filterChannelIds && filterChannelIds.length > 0 && !filterChannelIds.includes(channel.id)) continue
+    // Agent 模式：兜底过滤掉不兼容 Agent 的 provider（如 openai-chat / 智谱 / 豆包 / 通义 / google）。
+    // 即便用户在白名单里手滑勾上了，这里也不允许选；防止跑出 Codex/Claude SDK 永远跑不通的渠道。
+    if (agentOnly && !isAgentCompatibleProvider(channel.provider)) continue
 
     for (const model of channel.models) {
       if (!model.enabled) continue
@@ -74,6 +83,8 @@ interface ModelSelectorProps {
   filterChannelId?: string
   /** 仅显示这些渠道的模型（多渠道过滤） */
   filterChannelIds?: string[]
+  /** 仅显示 Agent 兼容的 provider（Agent 模式入口应传 true，Chat 模式保持 false/undefined） */
+  agentOnly?: boolean
   /** 外部选中模型（不传则用内部 selectedModelAtom） */
   externalSelectedModel?: { channelId: string; modelId: string } | null
   /** 外部选择回调 */
@@ -83,6 +94,7 @@ interface ModelSelectorProps {
 export function ModelSelector({
   filterChannelId,
   filterChannelIds,
+  agentOnly,
   externalSelectedModel,
   onModelSelect,
 }: ModelSelectorProps = {}): React.ReactElement {
@@ -107,7 +119,7 @@ export function ModelSelector({
     }
   }, [open, setChannels])
 
-  const modelOptions = React.useMemo(() => buildModelOptions(channels, filterChannelId, filterChannelIds), [channels, filterChannelId, filterChannelIds])
+  const modelOptions = React.useMemo(() => buildModelOptions(channels, filterChannelId, filterChannelIds, agentOnly), [channels, filterChannelId, filterChannelIds, agentOnly])
   const grouped = React.useMemo(() => groupByChannel(modelOptions), [modelOptions])
 
   // 搜索过滤

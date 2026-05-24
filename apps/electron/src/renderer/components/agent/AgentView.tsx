@@ -96,7 +96,7 @@ import { AgentSessionProvider } from '@/contexts/session-context'
 import { draftSessionIdsAtom } from '@/atoms/draft-session-atoms'
 import { sendWithCmdEnterAtom } from '@/atoms/shortcut-atoms'
 import type { AgentSendInput, AgentPendingFile, FileDialogLargeFile, ModelOption, SDKMessage } from '@mroma/shared'
-import { MAX_ATTACHMENT_SIZE } from '@mroma/shared'
+import { MAX_ATTACHMENT_SIZE, isAgentCompatibleProvider } from '@mroma/shared'
 import { fileToBase64, formatFileNames, getFileParentPath } from '@/lib/file-utils'
 
 /** 稳定的空 SDKMessage 数组引用，避免 ?? [] 每次创建新引用 */
@@ -459,15 +459,20 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
   // 渠道已选但模型未选时，自动选择第一个可用模型
   const globalChannels = useAtomValue(channelsAtom)
 
-  // 检查 Agent 渠道列表中是否存在可用的模型（渠道 enabled + 模型 enabled）
+  // 检查 Agent 渠道列表中是否存在可用的模型（渠道 enabled + 模型 enabled + provider 兼容 Agent）
   const hasAvailableModel = React.useMemo(() => {
     // Mroma 官方渠道（商业版）：只要 enabled 且有可用模型，直接视为可用
     const mromaOfficial = globalChannels.find((c) => c.id === 'mroma-official')
     if (mromaOfficial?.enabled && mromaOfficial.models.some((m) => m.enabled)) return true
-    // 其他渠道：需在 agentChannelIds 白名单中
+    // 其他渠道：需在 agentChannelIds 白名单中 + provider 兼容 Agent
+    // openai-chat 等仅 Chat 模式渠道不会让 Agent 看上去"可用"
     if (!agentChannelIds || agentChannelIds.length === 0) return false
     return globalChannels.some(
-      (c) => c.enabled && agentChannelIds.includes(c.id) && c.models.some((m) => m.enabled),
+      (c) =>
+        c.enabled &&
+        agentChannelIds.includes(c.id) &&
+        isAgentCompatibleProvider(c.provider) &&
+        c.models.some((m) => m.enabled),
     )
   }, [globalChannels, agentChannelIds])
   React.useEffect(() => {
@@ -1741,6 +1746,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       node: (
         <ModelSelector
           filterChannelIds={agentChannelIds}
+          agentOnly
           externalSelectedModel={externalSelectedModel}
           onModelSelect={handleModelSelect}
         />

@@ -433,37 +433,16 @@ export class CodexAgentAdapter implements AgentProviderAdapter {
     if (baseUrl) codexEnv.OPENAI_BASE_URL = baseUrl
 
     // 4. 构造 Codex 实例
-    //
-    // 两种连接协议：
-    //  - Responses API（默认，wss + /v1/responses）：用于 openai-responses，仅 OpenAI 官方端点支持
-    //  - Chat Completions API（wire_api = "chat"）：用于 openai-chat，覆盖任意 OpenAI Chat 兼容端点
-    //
-    // wire 协议由 orchestrator 通过 env.MROMA_CODEX_WIRE_API 旁路传入（值为 'chat' / 'responses'）。
-    // 当走 chat 协议时，注册一个自定义 model_provider（id = mroma_custom_chat），通过 SDK 的
-    // config 字段下发到 codex CLI 的 --config model_providers.<id>.* 参数；同时把 model_provider
-    // 顶层指针指向它，让 codex 切到该 provider。
-    const wireApi: 'chat' | 'responses' = env?.MROMA_CODEX_WIRE_API === 'chat' ? 'chat' : 'responses'
-    const sdkConfig: import('@openai/codex-sdk').CodexOptions['config'] = wireApi === 'chat'
-      ? {
-          model_provider: 'mroma_custom_chat',
-          model_providers: {
-            mroma_custom_chat: {
-              name: 'Mroma OpenAI Chat',
-              base_url: baseUrl || 'https://api.openai.com/v1',
-              wire_api: 'chat',
-              env_key: 'OPENAI_API_KEY',
-            },
-          },
-        }
-      : undefined
-
+    //    走 codex 默认的 openai provider（Responses API：wss + /v1/responses）。
+    //    历史尝试：曾用自定义 model_providers.* + wire_api = "chat" 适配只支持 Chat
+    //    Completions 协议的第三方端点（小米 MiMo / 智谱 / 第三方代理等），但 codex
+    //    自 2026-02 PR #10157 起彻底移除 wire_api = "chat" 支持，回退方案已删除。
+    //    如需接入只有 Chat Completions 的端点，建议在本地起 va-ai-api-bridge 等
+    //    Responses→Chat proxy，并把渠道 baseUrl 指向该 proxy。
     const codex = new CodexCtor({
       apiKey,
-      // wire=chat 时 baseUrl 已写进 model_providers.mroma_custom_chat.base_url，不需要再下发顶层
-      // openai_base_url（它只对内置 openai provider 生效）
-      ...(wireApi === 'responses' && baseUrl && { baseUrl }),
+      ...(baseUrl && { baseUrl }),
       env: codexEnv,
-      ...(sdkConfig && { config: sdkConfig }),
     })
 
     // 5. 构造 ThreadOptions（sandbox / approval / model / cwd 都放这里）

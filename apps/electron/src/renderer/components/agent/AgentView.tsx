@@ -369,10 +369,23 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     }
   }, [sessionId, sessionChannelMap, sessionModelMap, defaultChannelId, defaultModelId, setSessionChannelMap, setSessionModelMap])
 
+  const globalChannels = useAtomValue(channelsAtom)
+
+  // 用户在 ChannelForm 为模型配置的 Context Token Limit 优先于 SDK / inferContextWindow 兜底
+  const userContextTokenLimit = React.useMemo(() => {
+    if (!agentChannelId || !agentModelId) return undefined
+    const channel = globalChannels.find((c) => c.id === agentChannelId)
+    return channel?.models.find((m) => m.id === agentModelId)?.advancedConfig?.contextTokenLimit
+  }, [globalChannels, agentChannelId, agentModelId])
+
   const contextStatus: AgentContextStatus = {
     isCompacting: streamState?.isCompacting ?? false,
     inputTokens: streamState?.inputTokens,
-    contextWindow: streamState?.contextWindow,
+    outputTokens: streamState?.outputTokens,
+    cacheReadTokens: streamState?.cacheReadTokens,
+    cacheCreationTokens: streamState?.cacheCreationTokens,
+    costUsd: streamState?.costUsd,
+    contextWindow: userContextTokenLimit ?? streamState?.contextWindow,
   }
   const setAgentStreamErrors = useSetAtom(agentStreamErrorsAtom)
   const streamErrors = useAtomValue(agentStreamErrorsAtom)
@@ -455,9 +468,6 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
   React.useEffect(() => {
     pendingFilesRef.current = pendingFiles
   }, [pendingFiles])
-
-  // 渠道已选但模型未选时，自动选择第一个可用模型
-  const globalChannels = useAtomValue(channelsAtom)
 
   // 检查 Agent 渠道列表中是否存在可用的模型（渠道 enabled + 模型 enabled + provider 兼容 Agent）
   const hasAvailableModel = React.useMemo(() => {

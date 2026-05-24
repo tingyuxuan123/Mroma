@@ -532,6 +532,7 @@ export class AgentOrchestrator {
     apiKey: string,
     baseUrl: string | undefined,
     provider: ProviderType,
+    maxOutputTokens?: number,
   ): Promise<Record<string, string | undefined>> {
     const DEFAULT_ANTHROPIC_URL = 'https://api.anthropic.com'
 
@@ -569,8 +570,9 @@ export class AgentOrchestrator {
 
     const sdkEnv: Record<string, string | undefined> = {
       ...cleanEnv,
-      // 提升输出 token 上限，避免 "exceeded 32000 output token maximum" 错误
-      CLAUDE_CODE_MAX_OUTPUT_TOKENS: '64000',
+      // 输出 token 上限：优先用用户在 ChannelForm 为模型配置的 maxOutputTokens，
+      // 否则用 64000 兜底（避免 "exceeded 32000 output token maximum" 错误）
+      CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(maxOutputTokens && maxOutputTokens > 0 ? maxOutputTokens : 64000),
       // 启用 Tasks 功能
       CLAUDE_CODE_ENABLE_TASKS: 'true',
       // 禁用实验性 beta 功能，使用稳定模式
@@ -1072,7 +1074,9 @@ export class AgentOrchestrator {
       process.env.ANTHROPIC_BASE_URL = normalizeAnthropicBaseUrlForSdk(channel.baseUrl)
     }
 
-    const sdkEnv = await this.buildSdkEnv(apiKey, channel.baseUrl, channel.provider)
+    // 查找当前 modelId 对应的 advancedConfig（用户在 ChannelForm 里配置的高级参数）
+    const modelAdvancedConfig = channel.models?.find((m) => m.id === modelId)?.advancedConfig
+    const sdkEnv = await this.buildSdkEnv(apiKey, channel.baseUrl, channel.provider, modelAdvancedConfig?.maxOutputTokens)
 
     // 4. 读取已有的 SDK session ID（用于 resume）
     const sessionMeta = getAgentSessionMeta(sessionId)
@@ -1761,6 +1765,11 @@ export class AgentOrchestrator {
                   type: 'assistant',
                   message: {
                     content: [{ type: 'text', text: errorContent }],
+                    // 透传原始 usage / model / stop_reason：错误路径下也要保留 token 用量，
+                    // 否则前端 ContextUsageBadge 圆环无法更新（如 thinking signature 不兼容、max_tokens 截断等场景）
+                    ...(assistantMsg.message.usage ? { usage: assistantMsg.message.usage } : {}),
+                    ...(assistantMsg.message.model ? { model: assistantMsg.message.model } : {}),
+                    ...(assistantMsg.message.stop_reason ? { stop_reason: assistantMsg.message.stop_reason } : {}),
                   },
                   parent_tool_use_id: null,
                   error: { message: typedError.message, errorType: typedError.code },

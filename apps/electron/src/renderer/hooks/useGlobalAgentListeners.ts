@@ -164,11 +164,36 @@ function payloadToLegacyEvents(payload: AgentStreamPayload): AgentEvent[] {
     case 'assistant': {
       const aMsg = msg as SDKAssistantMessage
       if (aMsg.isReplay) return []
+
+      const events: AgentEvent[] = []
+
+      // Usage 优先提取：错误路径（thinking signature / max_tokens / prompt_too_long 等）下，
+      // 主进程会把原始 message 替换成 errorSDKMsg，但已透传 usage / model / stop_reason，
+      // 这里在判定 error 早退之前先派发 usage_update，保证 ContextUsageBadge 圆环仍能更新
+      if (!aMsg.parent_tool_use_id && aMsg.message?.usage) {
+        const u = aMsg.message.usage
+        const inputTokens = u.input_tokens + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)
+        // 流式过程中 SDK 不返回 contextWindow，按模型名推断一个默认值作为 fallback
+        const modelName = aMsg.message.model ?? aMsg._channelModelId
+        const fallbackWindow = inferContextWindow(modelName)
+        events.push({
+          type: 'usage_update',
+          usage: {
+            inputTokens,
+            outputTokens: u.output_tokens,
+            cacheReadTokens: u.cache_read_input_tokens,
+            cacheCreationTokens: u.cache_creation_input_tokens,
+            ...(fallbackWindow ? { contextWindow: fallbackWindow } : {}),
+          },
+        })
+      }
+
       if (aMsg.error) {
         // 错误已在主进程处理，这里仅作为 typed_error 透传
-        return [{ type: 'error', message: aMsg.error.message }]
+        events.push({ type: 'error', message: aMsg.error.message })
+        return events
       }
-      const events: AgentEvent[] = []
+
       for (const block of aMsg.message.content) {
         if (block.type === 'text' && 'text' in block) {
           events.push({ type: 'text_complete', text: (block as { text: string }).text, isIntermediate: false, parentToolUseId: aMsg.parent_tool_use_id ?? undefined })
@@ -186,24 +211,6 @@ function payloadToLegacyEvents(payload: AgentStreamPayload): AgentEvent[] {
             parentToolUseId: aMsg.parent_tool_use_id ?? undefined,
           })
         }
-      }
-      // Usage（保留完整字段用于详细展示）
-      if (!aMsg.parent_tool_use_id && aMsg.message.usage) {
-        const u = aMsg.message.usage
-        const inputTokens = u.input_tokens + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)
-        // 流式过程中 SDK 不返回 contextWindow，按模型名推断一个默认值作为 fallback
-        const modelName = aMsg.message.model ?? aMsg._channelModelId
-        const fallbackWindow = inferContextWindow(modelName)
-        events.push({
-          type: 'usage_update',
-          usage: {
-            inputTokens,
-            outputTokens: u.output_tokens,
-            cacheReadTokens: u.cache_read_input_tokens,
-            cacheCreationTokens: u.cache_creation_input_tokens,
-            ...(fallbackWindow ? { contextWindow: fallbackWindow } : {}),
-          },
-        })
       }
       return events
     }
@@ -232,7 +239,10 @@ function payloadToLegacyEvents(payload: AgentStreamPayload): AgentEvent[] {
     case 'result': {
       const rMsg = msg as { subtype: string; usage?: { input_tokens: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }; total_cost_usd?: number; modelUsage?: Record<string, { contextWindow?: number }> }
       const usage = rMsg.usage
-      const contextWindow = rMsg.modelUsage ? Object.values(rMsg.modelUsage)[0]?.contextWindow : undefined
+      // modelUsage 仅 Claude Code SDK 官方渠道才会带 contextWindow；
+      // 第三方 Anthropic 兼容渠道（mimo / minimax / deepseek 等）不带，按模型名推断兜底
+      const modelEntry = rMsg.modelUsage ? Object.entries(rMsg.modelUsage)[0] : undefined
+      const contextWindow = modelEntry?.[1]?.contextWindow ?? inferContextWindow(modelEntry?.[0])
       return [{
         type: 'complete',
         stopReason: rMsg.subtype === 'success' ? 'end_turn' : 'error',

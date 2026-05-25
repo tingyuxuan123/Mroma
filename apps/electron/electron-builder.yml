@@ -141,6 +141,9 @@ linux:
       arch:
         - x64
 
+deb:
+  afterInstall: scripts/linux-after-install.sh
+
 # ============================================
 # 发布配置
 # 每个平台的 build job 通过 --publish always 直接上传到 GitHub Release。

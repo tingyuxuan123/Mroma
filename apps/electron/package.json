@@ -1,7 +1,8 @@
 {
   "name": "@mroma/electron",
-  "version": "0.9.47",
+  "version": "0.9.48",
   "description": "Mroma next gen ai software with general agents - Electron App",
+  "homepage": "https://github.com/tingyuxuan123/Mroma",
   "main": "dist/main.cjs",
   "author": {
     "name": "tingyuxuan123",
@@ -25,11 +26,11 @@
     "start": "bun run build && bunx electron .",
     "typecheck": "tsc --noEmit",
     "generate:icons": "cd resources && ./generate-icons.sh",
-    "pack": "electron-builder --dir",
-    "dist": "electron-builder",
-    "dist:mac": "electron-builder --mac",
-    "dist:win": "electron-builder --win",
-    "dist:linux": "electron-builder --linux",
+    "pack": "bun run build && electron-builder --dir",
+    "dist": "bun run build && electron-builder",
+    "dist:mac": "bun run build && electron-builder --mac",
+    "dist:win": "bun run build && electron-builder --win",
+    "dist:linux": "bun run build && electron-builder --linux",
     "dist:visual": "bun run scripts/dist.ts",
     "dist:fast": "bun run scripts/dist.ts --current-arch --dmg",
     "dist:debug": "bun run scripts/dist.ts --current-arch --verbose"

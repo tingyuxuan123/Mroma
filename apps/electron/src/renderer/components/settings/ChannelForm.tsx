@@ -647,7 +647,9 @@ export function ChannelForm({ channel, onSaved, onAgentEligibilityChange, onCanc
                   cfg.supportsFast === true ||
                   cfg.fastMode === true ||
                   cfg.reasoningEffort !== undefined ||
-                  cfg.enableExtendedContext === true
+                  cfg.enableExtendedContext === true ||
+                  cfg.autoCompactEnabled === true ||
+                  cfg.autoCompactThresholdPercent !== undefined
                 )
                 return (
                   <div key={model.id}>
@@ -669,6 +671,7 @@ export function ChannelForm({ channel, onSaved, onAgentEligibilityChange, onCanc
                             {(cfg.fastMode === true || cfg.supportsFast === true) && ' · Fast'}
                             {cfg.reasoningEffort !== undefined && ` · 思考 ${cfg.reasoningEffort}`}
                             {cfg.enableExtendedContext === true && ' · 1M'}
+                            {cfg.autoCompactEnabled === true && ` · 自动压缩 ${cfg.autoCompactThresholdPercent ?? 78}%`}
                           </span>
                         )}
                       </span>
@@ -722,6 +725,47 @@ export function ChannelForm({ channel, onSaved, onAgentEligibilityChange, onCanc
                           />
                           <p className="text-xs text-muted-foreground">
                             上下文窗口大小（token 数）。留空则使用模型默认值
+                          </p>
+                        </div>
+
+                        {/* 自动压缩阈值 */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-1.5">
+                              <Gauge size={13} className="text-muted-foreground" />
+                              <span className="text-xs font-medium text-foreground">自动压缩上下文</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleAdvancedConfigChange(model.id, {
+                                autoCompactEnabled: cfg?.autoCompactEnabled === true ? undefined : true,
+                              })}
+                              className={cn(
+                                'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs transition-colors border',
+                                cfg?.autoCompactEnabled === true
+                                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600'
+                                  : 'bg-muted/50 border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted',
+                              )}
+                            >
+                              {cfg?.autoCompactEnabled === true ? '已启用' : '未启用'}
+                            </button>
+                          </div>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={cfg?.autoCompactThresholdPercent ?? ''}
+                            onChange={(e) => {
+                              const v = e.target.value
+                              handleAdvancedConfigChange(model.id, {
+                                autoCompactThresholdPercent: v === '' ? undefined : Number(v),
+                              })
+                            }}
+                            placeholder="默认 78"
+                            className="h-8 text-sm"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            当前上下文占用达到窗口百分比后自动发送 /compact。建议 75-85
                           </p>
                         </div>
 

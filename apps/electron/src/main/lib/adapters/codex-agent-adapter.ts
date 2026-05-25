@@ -41,6 +41,7 @@ import type {
   SDKUserMessage,
   SDKResultMessage,
   SDKSystemMessage,
+  SDKCodexCumulativeUsage,
   JsonSchemaOutputFormat,
 } from '@mroma/shared'
 
@@ -81,6 +82,10 @@ interface CodexQueryView extends AgentQueryInput {
   outputFormat?: JsonSchemaOutputFormat
   /** Codex Fast 模式 */
   fastMode?: boolean
+  /** 模型上下文窗口（来自 Mroma 模型高级配置） */
+  contextWindow?: number
+  /** 上一次 Codex exec 暴露的累计 usage，用于把本次累计值换算为本轮用量 */
+  codexPreviousUsage?: SDKCodexCumulativeUsage
 }
 
 // ============================================================================
@@ -173,6 +178,12 @@ interface CodexUsage {
   cached_input_tokens?: number
   output_tokens?: number
   reasoning_output_tokens?: number
+}
+
+interface CodexResultUsageOptions {
+  model?: string
+  contextWindow?: number
+  previousUsage?: SDKCodexCumulativeUsage
 }
 
 function makeAssistantText(text: string, model?: string): SDKAssistantMessage {
@@ -287,6 +298,28 @@ export function buildCodexConfig(fastMode: boolean | undefined): CodexConfigObje
     service_tier: 'fast',
     fast_mode: true,
     features: { fast_mode: true },
+  }
+}
+
+function positiveDelta(current: number | undefined, previous: number | undefined): number {
+  return Math.max(0, (current ?? 0) - (previous ?? 0))
+}
+
+export function buildCodexTurnUsage(
+  cumulativeUsage: CodexUsage | undefined,
+  previousUsage?: SDKCodexCumulativeUsage,
+): { input_tokens: number; output_tokens: number; cache_read_input_tokens: number } {
+  const cumulativeInputTokens = positiveDelta(cumulativeUsage?.input_tokens, previousUsage?.input_tokens)
+  const cachedInputTokens = positiveDelta(cumulativeUsage?.cached_input_tokens, previousUsage?.cached_input_tokens)
+  const outputTokens = positiveDelta(cumulativeUsage?.output_tokens, previousUsage?.output_tokens)
+  const reasoningOutputTokens = positiveDelta(cumulativeUsage?.reasoning_output_tokens, previousUsage?.reasoning_output_tokens)
+
+  return {
+    // Codex/OpenAI 的 input_tokens 已包含 cached_input_tokens；Mroma 前端会把 cache_read
+    // 加回 inputTokens，因此这里先扣掉缓存部分，避免上下文用量被双算。
+    input_tokens: Math.max(0, cumulativeInputTokens - cachedInputTokens),
+    output_tokens: outputTokens + reasoningOutputTokens,
+    cache_read_input_tokens: cachedInputTokens,
   }
 }
 
@@ -438,16 +471,17 @@ function makeResultMessage(
   subtype: 'success' | 'error_during_execution',
   usage: CodexUsage | undefined,
   errors?: string[],
+  options: CodexResultUsageOptions = {},
 ): SDKResultMessage {
-  const u = usage ?? {}
+  const turnUsage = buildCodexTurnUsage(usage, options.previousUsage)
   return {
     type: 'result',
     subtype,
-    usage: {
-      input_tokens: u.input_tokens ?? 0,
-      output_tokens: (u.output_tokens ?? 0) + (u.reasoning_output_tokens ?? 0),
-      cache_read_input_tokens: u.cached_input_tokens ?? 0,
-    },
+    usage: turnUsage,
+    ...(usage && { _codexCumulativeUsage: usage }),
+    ...(options.model && options.contextWindow && {
+      modelUsage: { [options.model]: { contextWindow: options.contextWindow } },
+    }),
     ...(errors && errors.length > 0 && { errors }),
   }
 }
@@ -524,6 +558,8 @@ export class CodexAgentAdapter implements AgentProviderAdapter {
       networkAccessEnabled,
       outputFormat,
       fastMode,
+      contextWindow,
+      codexPreviousUsage,
     } = opts
 
     // 1. 抢占式注册 AbortController（外部 abort 需立刻生效）
@@ -533,10 +569,15 @@ export class CodexAgentAdapter implements AgentProviderAdapter {
     // 2. 从 env 中提取认证信息
     const apiKey = env?.OPENAI_API_KEY ?? env?.CODEX_API_KEY ?? ''
     const baseUrl = env?.OPENAI_BASE_URL ?? env?.CODEX_BASE_URL ?? undefined
+    const resultUsageOptions: CodexResultUsageOptions = {
+      model,
+      contextWindow,
+      previousUsage: codexPreviousUsage,
+    }
     if (!apiKey) {
       yield makeResultMessage('error_during_execution', undefined, [
         'OPENAI_API_KEY 未配置：请在渠道设置中填入 API Key',
-      ])
+      ], resultUsageOptions)
       activeControllers.delete(sessionId)
       return
     }
@@ -549,7 +590,7 @@ export class CodexAgentAdapter implements AgentProviderAdapter {
     } catch (err) {
       yield makeResultMessage('error_during_execution', undefined, [
         `无法加载 @openai/codex-sdk: ${err instanceof Error ? err.message : String(err)}。请确认已安装 codex CLI（npm i -g @openai/codex 或 brew install --cask codex）。`,
-      ])
+      ], resultUsageOptions)
       activeControllers.delete(sessionId)
       return
     }
@@ -628,7 +669,7 @@ export class CodexAgentAdapter implements AgentProviderAdapter {
 
       for await (const event of events) {
         if (controller.signal.aborted) {
-          yield makeResultMessage('error_during_execution', finalUsage, ['用户中止'])
+          yield makeResultMessage('error_during_execution', finalUsage, ['用户中止'], resultUsageOptions)
           resultEmitted = true
           break
         }
@@ -679,20 +720,20 @@ export class CodexAgentAdapter implements AgentProviderAdapter {
           }
           case 'turn.completed': {
             finalUsage = event.usage
-            yield makeResultMessage('success', finalUsage)
+            yield makeResultMessage('success', finalUsage, undefined, resultUsageOptions)
             resultEmitted = true
             break
           }
           case 'turn.failed': {
             const message = event.error?.message ?? event.message ?? 'turn failed'
-            yield makeResultMessage('error_during_execution', finalUsage, [message])
+            yield makeResultMessage('error_during_execution', finalUsage, [message], resultUsageOptions)
             resultEmitted = true
             break
           }
           case 'error': {
             const message = event.error?.message ?? event.message ?? 'codex error'
             onStderr?.(message)
-            yield makeResultMessage('error_during_execution', finalUsage, [message])
+            yield makeResultMessage('error_during_execution', finalUsage, [message], resultUsageOptions)
             resultEmitted = true
             break
           }
@@ -707,12 +748,12 @@ export class CodexAgentAdapter implements AgentProviderAdapter {
 
       // 兜底：如果迭代器自然结束但未发 result，补一条
       if (!resultEmitted) {
-        yield makeResultMessage('success', finalUsage)
+        yield makeResultMessage('success', finalUsage, undefined, resultUsageOptions)
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       onStderr?.(message)
-      yield makeResultMessage('error_during_execution', finalUsage, [message])
+      yield makeResultMessage('error_during_execution', finalUsage, [message], resultUsageOptions)
     } finally {
       activeControllers.delete(sessionId)
     }

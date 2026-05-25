@@ -1894,6 +1894,8 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
           cacheReadTokens={contextStatus.cacheReadTokens}
           cacheCreationTokens={contextStatus.cacheCreationTokens}
           contextWindow={contextStatus.contextWindow}
+          autoCompactEnabled={selectedModelAdvancedConfig?.autoCompactEnabled}
+          autoCompactThresholdPercent={selectedModelAdvancedConfig?.autoCompactThresholdPercent}
           isCompacting={contextStatus.isCompacting}
           isProcessing={streaming}
           onCompact={handleCompact}
@@ -1926,6 +1928,8 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     contextStatus.cacheReadTokens,
     contextStatus.cacheCreationTokens,
     contextStatus.contextWindow,
+    selectedModelAdvancedConfig?.autoCompactEnabled,
+    selectedModelAdvancedConfig?.autoCompactThresholdPercent,
     contextStatus.isCompacting,
     streaming,
     handleCompact,

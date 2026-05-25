@@ -123,6 +123,10 @@ export interface ModelAdvancedConfig {
   reasoningEffort?: AgentEffort
   /** 是否开启扩展上下文（如 1M context） */
   enableExtendedContext?: boolean
+  /** 是否在上下文接近上限时自动发送 /compact */
+  autoCompactEnabled?: boolean
+  /** 自动压缩触发阈值百分比（1-100），默认 78 */
+  autoCompactThresholdPercent?: number
 }
 
 /**

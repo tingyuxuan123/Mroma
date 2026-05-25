@@ -1,6 +1,6 @@
 {
   "name": "@mroma/electron",
-  "version": "0.9.54",
+  "version": "0.9.55",
   "description": "Mroma next gen ai software with general agents - Electron App",
   "homepage": "https://github.com/tingyuxuan123/Mroma",
   "main": "dist/main.cjs",

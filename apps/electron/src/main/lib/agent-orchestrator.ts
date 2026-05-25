@@ -20,7 +20,7 @@ import { join, dirname } from 'node:path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { app } from 'electron'
-import type { AgentSendInput, AgentMessage, AgentGenerateTitleInput, AgentProviderAdapter, AgentSessionMeta, TypedError, RetryAttempt, SDKMessage, SDKAssistantMessage, AgentStreamPayload, RewindSessionResult, SdkBeta, ProviderType, AgentEffort } from '@mroma/shared'
+import type { AgentSendInput, AgentMessage, AgentGenerateTitleInput, AgentProviderAdapter, AgentSessionMeta, TypedError, RetryAttempt, SDKMessage, SDKAssistantMessage, AgentStreamPayload, RewindSessionResult, SdkBeta, ProviderType, AgentEffort, SDKCodexCumulativeUsage } from '@mroma/shared'
 import {
   MROMA_DEFAULT_PERMISSION_MODE,
   MROMA_PERMISSION_MODE_CONFIG,
@@ -448,6 +448,17 @@ function resolveCodexFastMode(
   modelConfig: { fastMode?: boolean; supportsFast?: boolean } | undefined,
 ): boolean | undefined {
   return inputFastMode ?? modelConfig?.fastMode ?? modelConfig?.supportsFast
+}
+
+function getLastCodexCumulativeUsage(sessionId: string): SDKCodexCumulativeUsage | undefined {
+  const messages = getAgentSessionSDKMessages(sessionId)
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const msg = messages[i]
+    if (msg?.type !== 'result') continue
+    const usage = (msg as { _codexCumulativeUsage?: SDKCodexCumulativeUsage })._codexCumulativeUsage
+    if (usage) return usage
+  }
+  return undefined
 }
 
 /**
@@ -1535,6 +1546,7 @@ export class AgentOrchestrator {
       const maxTurns = appSettings.agentMaxTurns && appSettings.agentMaxTurns > 0
         ? appSettings.agentMaxTurns
         : undefined
+      const previousCodexUsage = isCodex ? getLastCodexCumulativeUsage(sessionId) : undefined
       const queryOptions: ClaudeAgentQueryOptions = {
         sessionId,
         prompt: finalPrompt,
@@ -1584,6 +1596,8 @@ export class AgentOrchestrator {
           webSearchMode: getToolState('web-search').enabled ? 'live' : 'disabled',
           networkAccessEnabled: initialPermissionMode === 'bypassPermissions',
           ...(resolvedCodexFastMode != null && { fastMode: resolvedCodexFastMode }),
+          ...(modelAdvancedConfig?.contextTokenLimit && { contextWindow: modelAdvancedConfig.contextTokenLimit }),
+          ...(previousCodexUsage && { codexPreviousUsage: previousCodexUsage }),
         }),
         ...(appSettings.agentMaxBudgetUsd != null && appSettings.agentMaxBudgetUsd > 0 && {
           maxBudgetUsd: appSettings.agentMaxBudgetUsd,

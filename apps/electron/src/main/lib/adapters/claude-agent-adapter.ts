@@ -18,6 +18,7 @@ import type {
   JsonSchemaOutputFormat,
   SDKMessage,
   MromaPermissionMode,
+  SDKCodexCumulativeUsage,
 } from '@mroma/shared'
 import {
   THINKING_SIGNATURE_ERROR_MESSAGE,
@@ -198,6 +199,10 @@ export interface ClaudeAgentQueryOptions extends AgentQueryInput {
   networkAccessEnabled?: boolean
   /** Codex Fast 模式 */
   fastMode?: boolean
+  /** Codex 模型上下文窗口（来自 Mroma 模型高级配置） */
+  contextWindow?: number
+  /** Codex 上一次原始累计 usage，用于 adapter 换算本轮用量 */
+  codexPreviousUsage?: SDKCodexCumulativeUsage
 }
 
 // ============================================================================

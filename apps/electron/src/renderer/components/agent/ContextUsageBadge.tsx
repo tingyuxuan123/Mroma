@@ -29,6 +29,8 @@ interface ContextUsageBadgeProps {
   cacheCreationTokens?: number
   costUsd?: number
   contextWindow?: number
+  autoCompactEnabled?: boolean
+  autoCompactThresholdPercent?: number
   isCompacting: boolean
   isProcessing: boolean
   onCompact: () => void
@@ -116,6 +118,8 @@ export function ContextUsageBadge({
   cacheReadTokens,
   cacheCreationTokens,
   contextWindow,
+  autoCompactEnabled,
+  autoCompactThresholdPercent,
   isCompacting,
   isProcessing,
   onCompact,
@@ -177,8 +181,9 @@ export function ContextUsageBadge({
   if (!displayTokens || displayTokens <= 0) return null
 
   // 警告阈值：基于压缩阈值（contextWindow × 0.775 × 80%）
+  const thresholdRatio = (autoCompactThresholdPercent ?? COMPACT_THRESHOLD_RATIO * 100) / 100
   const compactThreshold = displayWindow
-    ? Math.floor(displayWindow * COMPACT_THRESHOLD_RATIO)
+    ? Math.floor(displayWindow * thresholdRatio)
     : undefined
   const isWarning = compactThreshold
     ? displayTokens / compactThreshold >= WARNING_RATIO
@@ -247,6 +252,12 @@ export function ContextUsageBadge({
                   label="占用"
                   value={`${percent}%`}
                   emphasized={isWarning}
+                />
+              )}
+              {autoCompactEnabled && (
+                <DetailRow
+                  label="自动压缩"
+                  value={`${autoCompactThresholdPercent ?? Math.round(COMPACT_THRESHOLD_RATIO * 100)}%`}
                 />
               )}
             </>

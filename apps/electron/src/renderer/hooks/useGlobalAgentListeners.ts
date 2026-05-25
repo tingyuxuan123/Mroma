@@ -25,8 +25,10 @@ import {
   RECENTLY_MODIFIED_TTL_MS,
   applyAgentEvent,
   liveMessagesMapAtom,
+  agentSessionChannelMapAtom,
   agentSessionModelMapAtom,
   agentModelIdAtom,
+  agentEffortAtom,
   agentPermissionModeMapAtom,
   stoppedByUserSessionsAtom,
   agentPlanModeSessionsAtom,
@@ -43,6 +45,7 @@ import {
   agentSessionPathMapAtom,
   agentDiffRefreshVersionAtom,
 } from '@/atoms/agent-atoms'
+import { channelsAtom } from '@/atoms/chat-atoms'
 import {
   notificationsEnabledAtom,
   notificationSoundEnabledAtom,
@@ -57,9 +60,14 @@ import { autoPreviewEnabledAtom, previewPanelOpenMapAtom, previewFileMapAtom } f
 import type { NotificationSoundType } from '@/types/settings'
 import { toast } from 'sonner'
 import type { AgentStreamEvent, AgentStreamCompletePayload, AgentEvent, AgentStreamPayload, SDKAssistantMessage, SDKUserMessage, SDKSystemMessage, SDKContentBlock, SDKUserContentBlock } from '@mroma/shared'
+import { shouldAutoCompactContext } from '@/lib/agent-auto-compact'
 
 /** 触发右侧文件浏览器自动定位的写入类工具集合 */
 const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Update'])
+
+const AUTO_COMPACT_COOLDOWN_MS = 30_000
+const autoCompactInFlightSessions = new Set<string>()
+const autoCompactLastTrigger = new Map<string, { inputTokens: number; contextWindow: number; triggeredAt: number }>()
 
 /** 会改变 git 工作树状态的子命令（用于识别 Bash 中触发 diff 刷新的 git 操作） */
 const GIT_MUTATING_SUBCOMMANDS = /\bgit\s+(commit|checkout|reset|restore|stash|clean|add|rm|mv|pull|merge|rebase|cherry-pick|revert|switch|am|apply)\b/
@@ -351,6 +359,127 @@ export function useGlobalAgentListeners(): void {
     const getSessionTitle = (sessionId: string): string => {
       const sessions = store.get(agentSessionsAtom)
       return sessions.find((s) => s.id === sessionId)?.title ?? '未命名会话'
+    }
+
+    const maybeStartAutoCompact = (data: AgentStreamCompletePayload): void => {
+      const sessionId = data.sessionId
+      if (autoCompactInFlightSessions.has(sessionId)) {
+        autoCompactInFlightSessions.delete(sessionId)
+        return
+      }
+
+      const state = store.get(agentStreamingStatesAtom).get(sessionId)
+      const sessions = store.get(agentSessionsAtom)
+      const session = sessions.find((s) => s.id === sessionId)
+      const channelId = session?.channelId ?? store.get(agentSessionChannelMapAtom).get(sessionId)
+      const modelId = store.get(agentSessionModelMapAtom).get(sessionId) ?? store.get(agentModelIdAtom) ?? undefined
+      if (!channelId || !modelId) return
+
+      const channel = store.get(channelsAtom).find((c) => c.id === channelId)
+      const modelConfig = channel?.models.find((m) => m.id === modelId)?.advancedConfig
+      const contextWindow = modelConfig?.contextTokenLimit ?? state?.contextWindow
+      const inputTokens = state?.inputTokens
+
+      if (!shouldAutoCompactContext({
+        enabled: modelConfig?.autoCompactEnabled,
+        thresholdPercent: modelConfig?.autoCompactThresholdPercent,
+        inputTokens,
+        contextWindow,
+        stoppedByUser: data.stoppedByUser,
+        resultSubtype: data.resultSubtype,
+        isCompacting: state?.isCompacting,
+        compactInFlight: state?.compactInFlight,
+      })) {
+        return
+      }
+
+      const now = Date.now()
+      const last = autoCompactLastTrigger.get(sessionId)
+      if (
+        last &&
+        last.inputTokens === inputTokens &&
+        last.contextWindow === contextWindow &&
+        now - last.triggeredAt < AUTO_COMPACT_COOLDOWN_MS
+      ) {
+        return
+      }
+
+      const streamStartedAt = Date.now()
+      const localUuid = crypto.randomUUID()
+      const syntheticMsg = {
+        type: 'user',
+        uuid: localUuid,
+        message: { content: [{ type: 'text', text: '/compact' }] },
+        parent_tool_use_id: null,
+        _createdAt: streamStartedAt,
+      } satisfies SDKUserMessage & { _createdAt: number }
+
+      autoCompactInFlightSessions.add(sessionId)
+      autoCompactLastTrigger.set(sessionId, {
+        inputTokens: inputTokens ?? 0,
+        contextWindow: contextWindow ?? 0,
+        triggeredAt: now,
+      })
+
+      store.set(liveMessagesMapAtom, (prev) => {
+        const map = new Map(prev)
+        const current = map.get(sessionId) ?? []
+        map.set(sessionId, [...current, syntheticMsg])
+        return map
+      })
+
+      store.set(agentStreamingStatesAtom, (prev) => {
+        const map = new Map(prev)
+        const current = prev.get(sessionId) ?? {
+          running: true,
+          content: '',
+          toolActivities: [],
+          model: modelId,
+        }
+        map.set(sessionId, {
+          ...current,
+          running: true,
+          startedAt: streamStartedAt,
+          model: modelId,
+          isCompacting: true,
+          compactInFlight: true,
+        })
+        return map
+      })
+
+      const permissionMode = store.get(agentPermissionModeMapAtom).get(sessionId) ?? session?.permissionMode
+      window.electronAPI.sendAgentMessage({
+        sessionId,
+        userMessage: '/compact',
+        channelId,
+        modelId,
+        workspaceId: session?.workspaceId,
+        startedAt: streamStartedAt,
+        ...(permissionMode && { permissionModeOverride: permissionMode }),
+        ...(channel?.provider === 'openai-responses' && {
+          agentEffort: modelConfig?.reasoningEffort ?? store.get(agentEffortAtom) ?? 'high',
+          agentFastMode: modelConfig?.fastMode ?? modelConfig?.supportsFast,
+        }),
+      }).catch((error) => {
+        console.error('[GlobalAgentListeners] 自动 /compact 发送失败:', error)
+        autoCompactInFlightSessions.delete(sessionId)
+        store.set(liveMessagesMapAtom, (prev) => {
+          const map = new Map(prev)
+          const current = (map.get(sessionId) ?? []).filter(
+            (m) => (m as { uuid?: string }).uuid !== localUuid,
+          )
+          map.set(sessionId, current)
+          return map
+        })
+        store.set(agentStreamingStatesAtom, (prev) => {
+          const current = prev.get(sessionId)
+          if (!current) return prev
+          const map = new Map(prev)
+          map.set(sessionId, { ...current, running: false, isCompacting: false, compactInFlight: false })
+          return map
+        })
+        toast.error('自动压缩上下文失败，请手动重试 /compact')
+      })
     }
 
     /** 发送阻塞通知（带提示音 + 会话导航） */
@@ -821,148 +950,149 @@ export function useGlobalAgentListeners(): void {
       (data: AgentStreamCompletePayload) => {
         console.log(`[FLASH-DEBUG] STREAM_COMPLETE for session=${data.sessionId.slice(0, 8)}, stoppedByUser=${data.stoppedByUser}, resultSubtype=${data.resultSubtype}`)
         unstable_batchedUpdates(() => {
-        // 发送桌面通知（任务完成，始终播放提示音）
-        const enabled = store.get(notificationsEnabledAtom)
-        const soundEnabled = store.get(notificationSoundEnabledAtom)
-        const sounds = store.get(notificationSoundsAtom)
-        const sessionTitle = getSessionTitle(data.sessionId)
-        sendDesktopNotification(
-          'Agent 任务完成',
-          `[${sessionTitle}] 任务已完成`,
-          enabled,
-          {
-            playSound: enabled && soundEnabled,
-            soundType: 'taskComplete',
-            sounds,
-            onNavigate: makeNavigateToSession(data.sessionId, sessionTitle),
-          }
-        )
+          // 发送桌面通知（任务完成，始终播放提示音）
+          const enabled = store.get(notificationsEnabledAtom)
+          const soundEnabled = store.get(notificationSoundEnabledAtom)
+          const sounds = store.get(notificationSoundsAtom)
+          const sessionTitle = getSessionTitle(data.sessionId)
+          sendDesktopNotification(
+            'Agent 任务完成',
+            `[${sessionTitle}] 任务已完成`,
+            enabled,
+            {
+              playSound: enabled && soundEnabled,
+              soundType: 'taskComplete',
+              sounds,
+              onNavigate: makeNavigateToSession(data.sessionId, sessionTitle),
+            }
+          )
 
-        // STREAM_COMPLETE 表示后端已完全结束 — 立即标记 running: false
-        // 同时将所有未完成的工具活动标记为已完成，防止 subagent spinner 继续转动
-        // （complete 事件只清除 retrying，保持 running: true 以防竞态）
-        // 竞态保护：通过 startedAt 区分新旧流，防止旧流的 complete 事件重置新流的 running 状态
-        store.set(agentStreamingStatesAtom, (prev) => {
-          const current = prev.get(data.sessionId)
-          if (!current || !current.running) {
-            return prev
-          }
-          if (current.startedAt != null && (data.startedAt == null || current.startedAt > data.startedAt)) {
-            return prev
-          }
-          const map = new Map(prev)
-          map.set(data.sessionId, {
-            ...current,
-            running: false,
-            ...finalizeStreamingActivities(current.toolActivities),
-          })
-          return map
-        })
-
-        // 如果用户当前不在查看该会话，标记为"未查看的已完成"
-        const currentSessionId = store.get(currentAgentSessionIdAtom)
-        const isViewingCompletedSession = data.sessionId === currentSessionId && document.hasFocus()
-        if (!isViewingCompletedSession) {
-          store.set(unviewedCompletedSessionIdsAtom, (prev: Set<string>) => {
-            const next = new Set(prev)
-            next.add(data.sessionId)
-            return next
-          })
-        }
-
-        // 添加到 Working Done 集合（保持到 Tab 关闭）
-        store.set(workingDoneSessionIdsAtom, (prev: Set<string>) => {
-          const next = new Set(prev)
-          next.add(data.sessionId)
-          return next
-        })
-
-        // 标记用户主动打断状态
-        if (data.stoppedByUser) {
-          store.set(stoppedByUserSessionsAtom, (prev: Set<string>) => {
-            const next = new Set(prev)
-            next.add(data.sessionId)
-            return next
-          })
-        }
-
-        // 非正常结束时显示截断提示
-        if (data.resultSubtype && data.resultSubtype !== 'success' && !data.stoppedByUser) {
-          const messages: Record<string, string> = {
-            error_max_turns: '任务被中断：已达到轮次上限。继续对话可让 Agent 接着完成。',
-            error_max_budget_usd: '任务被中断：已达到预算上限。',
-            error_during_execution: '任务执行过程中发生错误。',
-          }
-          const msg = messages[data.resultSubtype] ?? `任务异常结束（${data.resultSubtype}）`
-          toast.warning(msg, { duration: 8000 })
-        }
-
-        // 清除 Plan 模式状态（防止异常退出时残留）
-        store.set(agentPlanModeSessionsAtom, (prev: Set<string>) => {
-          if (!prev.has(data.sessionId)) return prev
-          const next = new Set(prev)
-          next.delete(data.sessionId)
-          return next
-        })
-
-        /** 竞态保护：检查该会话是否已有新的流式请求正在运行 */
-        const isNewStreamRunning = (): boolean => {
-          const state = store.get(agentStreamingStatesAtom).get(data.sessionId)
-          return state?.running === true
-        }
-
-        /** 递增消息刷新版本号，通知 AgentView 重新加载消息 */
-        const bumpRefresh = (): void => {
-          store.set(agentMessageRefreshAtom, (prev) => {
+          // STREAM_COMPLETE 表示后端已完全结束 — 立即标记 running: false
+          // 同时将所有未完成的工具活动标记为已完成，防止 subagent spinner 继续转动
+          // （complete 事件只清除 retrying，保持 running: true 以防竞态）
+          // 竞态保护：通过 startedAt 区分新旧流，防止旧流的 complete 事件重置新流的 running 状态
+          store.set(agentStreamingStatesAtom, (prev) => {
+            const current = prev.get(data.sessionId)
+            if (!current || !current.running) {
+              return prev
+            }
+            if (current.startedAt != null && (data.startedAt == null || current.startedAt > data.startedAt)) {
+              return prev
+            }
             const map = new Map(prev)
-            map.set(data.sessionId, (prev.get(data.sessionId) ?? 0) + 1)
+            map.set(data.sessionId, {
+              ...current,
+              running: false,
+              ...finalizeStreamingActivities(current.toolActivities),
+            })
             return map
           })
-        }
 
-        const finalize = (): void => {
-          // 竞态保护：新流已启动时不要清理状态
-          if (isNewStreamRunning()) return
-
-          // 清理后台任务
-          store.set(backgroundTasksAtomFamily(data.sessionId), [])
-
-          // 清理该 session 关联的未完成写工具记录，防止内存泄漏
-          for (const [toolId, entry] of pendingWriteTools) {
-            if (entry.sessionId === data.sessionId) {
-              pendingWriteTools.delete(toolId)
-            }
-          }
-          for (const [toolId, sid] of pendingGitMutateTools) {
-            if (sid === data.sessionId) {
-              pendingGitMutateTools.delete(toolId)
-            }
-          }
-
-          // 注意：liveMessages 的清理已移至 AgentView 消息加载完成后执行，
-          // 与 streamingState 清理同步，避免「实时消息已清 → 持久化消息未到」的空档闪烁
-
-          // 刷新会话列表并同步 stoppedByUser 状态
-          window.electronAPI
-            .listAgentSessions()
-            .then((sessions) => {
-              store.set(agentSessionsAtom, sessions)
-              // 从持久化 meta 对齐 stoppedByUser 状态
-              store.set(stoppedByUserSessionsAtom, new Set<string>(
-                sessions.filter((s) => s.stoppedByUser).map((s) => s.id)
-              ))
+          // 如果用户当前不在查看该会话，标记为"未查看的已完成"
+          const currentSessionId = store.get(currentAgentSessionIdAtom)
+          const isViewingCompletedSession = data.sessionId === currentSessionId && document.hasFocus()
+          if (!isViewingCompletedSession) {
+            store.set(unviewedCompletedSessionIdsAtom, (prev: Set<string>) => {
+              const next = new Set(prev)
+              next.add(data.sessionId)
+              return next
             })
-            .catch(console.error)
+          }
 
-          // 注意：流式状态的完全清除由 AgentView 在消息加载完成后执行，
-          // 确保不会出现「气泡消失 → 持久化消息尚未加载」的空档闪烁
-        }
+          // 添加到 Working Done 集合（保持到 Tab 关闭）
+          store.set(workingDoneSessionIdsAtom, (prev: Set<string>) => {
+            const next = new Set(prev)
+            next.add(data.sessionId)
+            return next
+          })
 
-        // 通知 AgentView 重新加载消息（无论是否为当前会话）
-        if (!isNewStreamRunning()) {
-          bumpRefresh()
-        }
-        finalize()
+          // 标记用户主动打断状态
+          if (data.stoppedByUser) {
+            store.set(stoppedByUserSessionsAtom, (prev: Set<string>) => {
+              const next = new Set(prev)
+              next.add(data.sessionId)
+              return next
+            })
+          }
+
+          // 非正常结束时显示截断提示
+          if (data.resultSubtype && data.resultSubtype !== 'success' && !data.stoppedByUser) {
+            const messages: Record<string, string> = {
+              error_max_turns: '任务被中断：已达到轮次上限。继续对话可让 Agent 接着完成。',
+              error_max_budget_usd: '任务被中断：已达到预算上限。',
+              error_during_execution: '任务执行过程中发生错误。',
+            }
+            const msg = messages[data.resultSubtype] ?? `任务异常结束（${data.resultSubtype}）`
+            toast.warning(msg, { duration: 8000 })
+          }
+
+          // 清除 Plan 模式状态（防止异常退出时残留）
+          store.set(agentPlanModeSessionsAtom, (prev: Set<string>) => {
+            if (!prev.has(data.sessionId)) return prev
+            const next = new Set(prev)
+            next.delete(data.sessionId)
+            return next
+          })
+
+          /** 竞态保护：检查该会话是否已有新的流式请求正在运行 */
+          const isNewStreamRunning = (): boolean => {
+            const state = store.get(agentStreamingStatesAtom).get(data.sessionId)
+            return state?.running === true
+          }
+
+          /** 递增消息刷新版本号，通知 AgentView 重新加载消息 */
+          const bumpRefresh = (): void => {
+            store.set(agentMessageRefreshAtom, (prev) => {
+              const map = new Map(prev)
+              map.set(data.sessionId, (prev.get(data.sessionId) ?? 0) + 1)
+              return map
+            })
+          }
+
+          const finalize = (): void => {
+            // 竞态保护：新流已启动时不要清理状态
+            if (isNewStreamRunning()) return
+
+            // 清理后台任务
+            store.set(backgroundTasksAtomFamily(data.sessionId), [])
+
+            // 清理该 session 关联的未完成写工具记录，防止内存泄漏
+            for (const [toolId, entry] of pendingWriteTools) {
+              if (entry.sessionId === data.sessionId) {
+                pendingWriteTools.delete(toolId)
+              }
+            }
+            for (const [toolId, sid] of pendingGitMutateTools) {
+              if (sid === data.sessionId) {
+                pendingGitMutateTools.delete(toolId)
+              }
+            }
+
+            // 注意：liveMessages 的清理已移至 AgentView 消息加载完成后执行，
+            // 与 streamingState 清理同步，避免「实时消息已清 → 持久化消息未到」的空档闪烁
+
+            // 刷新会话列表并同步 stoppedByUser 状态
+            window.electronAPI
+              .listAgentSessions()
+              .then((sessions) => {
+                store.set(agentSessionsAtom, sessions)
+                // 从持久化 meta 对齐 stoppedByUser 状态
+                store.set(stoppedByUserSessionsAtom, new Set<string>(
+                  sessions.filter((s) => s.stoppedByUser).map((s) => s.id)
+                ))
+              })
+              .catch(console.error)
+
+            // 注意：流式状态的完全清除由 AgentView 在消息加载完成后执行，
+            // 确保不会出现「气泡消失 → 持久化消息尚未加载」的空档闪烁
+          }
+
+          // 通知 AgentView 重新加载消息（无论是否为当前会话）
+          if (!isNewStreamRunning()) {
+            bumpRefresh()
+          }
+          finalize()
+          queueMicrotask(() => maybeStartAutoCompact(data))
         }) // unstable_batchedUpdates
       }
     )
@@ -971,24 +1101,25 @@ export function useGlobalAgentListeners(): void {
     const cleanupError = window.electronAPI.onAgentStreamError(
       (data: { sessionId: string; error: string }) => {
         unstable_batchedUpdates(() => {
-        console.error('[GlobalAgentListeners] 流式错误:', data.error)
+          console.error('[GlobalAgentListeners] 流式错误:', data.error)
+          autoCompactInFlightSessions.delete(data.sessionId)
 
-        // 存储错误消息
-        store.set(agentStreamErrorsAtom, (prev) => {
-          const map = new Map(prev)
-          map.set(data.sessionId, data.error)
-          return map
-        })
-
-        // 递增消息刷新版本号，通知 AgentView 重新加载消息
-        const state = store.get(agentStreamingStatesAtom).get(data.sessionId)
-        if (!state?.running) {
-          store.set(agentMessageRefreshAtom, (prev) => {
+          // 存储错误消息
+          store.set(agentStreamErrorsAtom, (prev) => {
             const map = new Map(prev)
-            map.set(data.sessionId, (prev.get(data.sessionId) ?? 0) + 1)
+            map.set(data.sessionId, data.error)
             return map
           })
-        }
+
+          // 递增消息刷新版本号，通知 AgentView 重新加载消息
+          const state = store.get(agentStreamingStatesAtom).get(data.sessionId)
+          if (!state?.running) {
+            store.set(agentMessageRefreshAtom, (prev) => {
+              const map = new Map(prev)
+              map.set(data.sessionId, (prev.get(data.sessionId) ?? 0) + 1)
+              return map
+            })
+          }
         }) // unstable_batchedUpdates
       }
     )

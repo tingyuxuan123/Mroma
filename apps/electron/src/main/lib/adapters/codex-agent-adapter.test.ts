@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { SDKAssistantMessage, SDKUserMessage } from '@mroma/shared'
-import { buildCodexConfig, convertCodexItemToSDKMessages, extractAttachedImagePaths, mapEffortToCodex, type CodexItem } from './codex-agent-adapter'
+import { buildCodexConfig, buildCodexTurnUsage, convertCodexItemToSDKMessages, extractAttachedImagePaths, mapEffortToCodex, type CodexItem } from './codex-agent-adapter'
 
 function firstAssistant(messages: unknown[]): SDKAssistantMessage {
   return messages.find((msg): msg is SDKAssistantMessage =>
@@ -163,6 +163,29 @@ describe('Codex SDK 选项映射', () => {
       features: { fast_mode: true },
     })
     expect(buildCodexConfig(false)).toBeUndefined()
+  })
+
+  test('given cumulative Codex usage when previous usage exists then maps to turn usage delta', () => {
+    const usage = buildCodexTurnUsage(
+      {
+        input_tokens: 120_000,
+        cached_input_tokens: 80_000,
+        output_tokens: 5_000,
+        reasoning_output_tokens: 2_000,
+      },
+      {
+        input_tokens: 40_000,
+        cached_input_tokens: 20_000,
+        output_tokens: 1_500,
+        reasoning_output_tokens: 500,
+      },
+    )
+
+    expect(usage).toEqual({
+      input_tokens: 20_000,
+      cache_read_input_tokens: 60_000,
+      output_tokens: 5_000,
+    })
   })
 
   test('given attached image files when extracting then returns existing image paths only', () => {

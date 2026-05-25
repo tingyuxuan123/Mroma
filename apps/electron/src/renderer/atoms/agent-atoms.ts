@@ -7,7 +7,7 @@
 
 import { atom } from 'jotai'
 import { atomFamily, atomWithStorage } from 'jotai/utils'
-import type { AgentSessionMeta, AgentEvent, AgentWorkspace, AgentPendingFile, RetryAttempt, MromaPermissionMode, PermissionRequest, AskUserRequest, ExitPlanModeRequest, ThinkingConfig, AgentEffort, SDKMessage } from '@mroma/shared'
+import type { AgentSessionMeta, AgentEvent, AgentWorkspace, AgentPendingFile, RetryAttempt, MromaPermissionMode, PermissionRequest, AskUserRequest, ExitPlanModeRequest, ThinkingConfig, AgentEffort, SDKMessage, AgentBackend, AgentContextUsage } from '@mroma/shared'
 import { MROMA_DEFAULT_PERMISSION_MODE } from '@mroma/shared'
 import { calculateDockBadgeCount, countPendingRequests } from '@/lib/dock-badge-count'
 
@@ -66,6 +66,8 @@ export interface AgentStreamState {
   inputTokens?: number
   /** 输出 token 数 */
   outputTokens?: number
+  /** 推理输出 token 数 */
+  reasoningTokens?: number
   /** 缓存读取 token 数 */
   cacheReadTokens?: number
   /** 缓存写入 token 数 */
@@ -74,6 +76,14 @@ export interface AgentStreamState {
   costUsd?: number
   /** 模型上下文窗口大小 */
   contextWindow?: number
+  /** 当前上下文用量是否为估算值 */
+  contextUsageSource?: AgentContextUsage['source']
+  /** 用量范围：turn / active_context / session */
+  contextUsageScope?: AgentContextUsage['scope']
+  /** 当前后端 */
+  contextUsageBackend?: AgentBackend
+  /** Codex 等 provider 的活跃上下文估算 */
+  estimatedActiveTokens?: number
   /** 是否正在压缩上下文 */
   isCompacting?: boolean
   /**
@@ -627,10 +637,15 @@ export function applyAgentEvent(
         ...finalizeStreamingActivities(prev.toolActivities),
         ...(shouldUseResultUsage && event.usage?.inputTokens != null && { inputTokens: event.usage.inputTokens }),
         ...(shouldUseResultUsage && event.usage?.outputTokens != null && { outputTokens: event.usage.outputTokens }),
+        ...(shouldUseResultUsage && event.usage?.reasoningTokens != null && { reasoningTokens: event.usage.reasoningTokens }),
         ...(shouldUseResultUsage && event.usage?.cacheReadTokens != null && { cacheReadTokens: event.usage.cacheReadTokens }),
         ...(shouldUseResultUsage && event.usage?.cacheCreationTokens != null && { cacheCreationTokens: event.usage.cacheCreationTokens }),
         ...(event.usage?.costUsd != null && { costUsd: event.usage.costUsd }),
         ...(event.usage?.contextWindow && { contextWindow: event.usage.contextWindow }),
+        ...(event.usage?.estimatedActiveTokens != null && { estimatedActiveTokens: event.usage.estimatedActiveTokens }),
+        ...(event.usage?.source && { contextUsageSource: event.usage.source }),
+        ...(event.usage?.scope && { contextUsageScope: event.usage.scope }),
+        ...(event.usage?.backend && { contextUsageBackend: event.usage.backend }),
       }
 
     case 'typed_error':
@@ -648,10 +663,15 @@ export function applyAgentEvent(
         ...prev,
         inputTokens: event.usage.inputTokens,
         ...(event.usage.outputTokens != null && { outputTokens: event.usage.outputTokens }),
+        ...(event.usage.reasoningTokens != null && { reasoningTokens: event.usage.reasoningTokens }),
         ...(event.usage.cacheReadTokens != null && { cacheReadTokens: event.usage.cacheReadTokens }),
         ...(event.usage.cacheCreationTokens != null && { cacheCreationTokens: event.usage.cacheCreationTokens }),
         ...(event.usage.costUsd != null && { costUsd: event.usage.costUsd }),
         ...(event.usage.contextWindow && { contextWindow: event.usage.contextWindow }),
+        ...(event.usage.estimatedActiveTokens != null && { estimatedActiveTokens: event.usage.estimatedActiveTokens }),
+        ...(event.usage.source && { contextUsageSource: event.usage.source }),
+        ...(event.usage.scope && { contextUsageScope: event.usage.scope }),
+        ...(event.usage.backend && { contextUsageBackend: event.usage.backend }),
       }
 
     case 'compacting':
@@ -740,10 +760,15 @@ export interface AgentContextStatus {
   isCompacting: boolean
   inputTokens?: number
   outputTokens?: number
+  reasoningTokens?: number
   cacheReadTokens?: number
   cacheCreationTokens?: number
   costUsd?: number
   contextWindow?: number
+  contextUsageSource?: AgentContextUsage['source']
+  contextUsageScope?: AgentContextUsage['scope']
+  contextUsageBackend?: AgentBackend
+  estimatedActiveTokens?: number
 }
 
 /** 当前会话的上下文使用量派生 atom */
@@ -755,10 +780,15 @@ export const agentContextStatusAtom = atom<AgentContextStatus>((get) => {
     isCompacting: state?.isCompacting ?? false,
     inputTokens: state?.inputTokens,
     outputTokens: state?.outputTokens,
+    reasoningTokens: state?.reasoningTokens,
     cacheReadTokens: state?.cacheReadTokens,
     cacheCreationTokens: state?.cacheCreationTokens,
     costUsd: state?.costUsd,
     contextWindow: state?.contextWindow,
+    contextUsageSource: state?.contextUsageSource,
+    contextUsageScope: state?.contextUsageScope,
+    contextUsageBackend: state?.contextUsageBackend,
+    estimatedActiveTokens: state?.estimatedActiveTokens,
   }
 })
 

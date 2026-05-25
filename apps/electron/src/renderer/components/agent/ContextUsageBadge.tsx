@@ -25,10 +25,15 @@ const HOVER_CLOSE_DELAY = 150
 interface ContextUsageBadgeProps {
   inputTokens?: number
   outputTokens?: number
+  reasoningTokens?: number
   cacheReadTokens?: number
   cacheCreationTokens?: number
   costUsd?: number
   contextWindow?: number
+  estimatedActiveTokens?: number
+  usageSource?: 'sdk' | 'estimated' | 'configured' | 'fallback'
+  usageScope?: 'turn' | 'active_context' | 'session'
+  usageBackend?: 'claude' | 'codex'
   autoCompactEnabled?: boolean
   autoCompactThresholdPercent?: number
   isCompacting: boolean
@@ -115,9 +120,14 @@ function DetailRow({ label, value, emphasized }: DetailRowProps): React.ReactEle
 export function ContextUsageBadge({
   inputTokens,
   outputTokens,
+  reasoningTokens,
   cacheReadTokens,
   cacheCreationTokens,
   contextWindow,
+  estimatedActiveTokens,
+  usageSource,
+  usageScope,
+  usageBackend,
   autoCompactEnabled,
   autoCompactThresholdPercent,
   isCompacting,
@@ -128,12 +138,29 @@ export function ContextUsageBadge({
   const stableRef = React.useRef<{
     inputTokens: number
     outputTokens?: number
+    reasoningTokens?: number
     cacheReadTokens?: number
     cacheCreationTokens?: number
     contextWindow?: number
+    estimatedActiveTokens?: number
+    usageSource?: 'sdk' | 'estimated' | 'configured' | 'fallback'
+    usageScope?: 'turn' | 'active_context' | 'session'
+    usageBackend?: 'claude' | 'codex'
   } | null>(null)
-  if (inputTokens && inputTokens > 0) {
-    stableRef.current = { inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, contextWindow }
+  const currentDisplayTokens = estimatedActiveTokens ?? inputTokens
+  if (currentDisplayTokens && currentDisplayTokens > 0) {
+    stableRef.current = {
+      inputTokens: inputTokens ?? currentDisplayTokens,
+      outputTokens,
+      reasoningTokens,
+      cacheReadTokens,
+      cacheCreationTokens,
+      contextWindow,
+      estimatedActiveTokens,
+      usageSource,
+      usageScope,
+      usageBackend,
+    }
   }
 
   const [open, setOpen] = React.useState(false)
@@ -170,12 +197,17 @@ export function ContextUsageBadge({
 
   // 使用稳定值：优先当前数据，回退到上次有效数据
   const stable = stableRef.current
-  const hasCurrent = inputTokens != null && inputTokens > 0
-  const displayTokens = hasCurrent ? inputTokens : stable?.inputTokens
+  const hasCurrent = currentDisplayTokens != null && currentDisplayTokens > 0
+  const displayTokens = hasCurrent ? currentDisplayTokens : (stable?.estimatedActiveTokens ?? stable?.inputTokens)
+  const displayInput = hasCurrent ? inputTokens : stable?.inputTokens
   const displayWindow = hasCurrent ? contextWindow : stable?.contextWindow
   const displayOutput = hasCurrent ? outputTokens : stable?.outputTokens
+  const displayReasoning = hasCurrent ? reasoningTokens : stable?.reasoningTokens
   const displayCacheRead = hasCurrent ? cacheReadTokens : stable?.cacheReadTokens
   const displayCacheCreation = hasCurrent ? cacheCreationTokens : stable?.cacheCreationTokens
+  const displaySource = hasCurrent ? usageSource : stable?.usageSource
+  const displayScope = hasCurrent ? usageScope : stable?.usageScope
+  const displayBackend = hasCurrent ? usageBackend : stable?.usageBackend
 
   // 从未有过 usage 数据 → 不显示
   if (!displayTokens || displayTokens <= 0) return null
@@ -192,7 +224,7 @@ export function ContextUsageBadge({
   const ratio = displayWindow ? displayTokens / displayWindow : 0
 
   // 纯输入 = 总上下文 - 缓存读取 - 缓存写入
-  const pureInput = displayTokens - (displayCacheRead ?? 0) - (displayCacheCreation ?? 0)
+  const pureInput = (displayInput ?? displayTokens) - (displayCacheRead ?? 0) - (displayCacheCreation ?? 0)
 
   const percent = displayWindow
     ? Math.round((displayTokens / displayWindow) * 100)
@@ -236,8 +268,18 @@ export function ContextUsageBadge({
         <div className="flex flex-col gap-1.5">
           {pureInput > 0 && <DetailRow label="输入" value={pureInput.toLocaleString()} />}
           {displayOutput ? <DetailRow label="输出" value={displayOutput.toLocaleString()} /> : null}
+          {displayReasoning ? <DetailRow label="推理输出" value={displayReasoning.toLocaleString()} /> : null}
           {displayCacheCreation ? <DetailRow label="缓存写入" value={displayCacheCreation.toLocaleString()} /> : null}
           {displayCacheRead ? <DetailRow label="缓存读取" value={displayCacheRead.toLocaleString()} /> : null}
+          {displaySource && (
+            <DetailRow
+              label="来源"
+              value={displaySource === 'estimated' ? '估算' : displaySource === 'sdk' ? 'SDK' : displaySource}
+            />
+          )}
+          {displayBackend === 'codex' && displayScope === 'turn' && (
+            <DetailRow label="范围" value="本轮活跃上下文估算" />
+          )}
 
           {displayWindow ? (
             <>

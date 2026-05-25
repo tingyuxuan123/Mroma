@@ -7,10 +7,8 @@
  * ClaudeAgentAdapter 共用的伪 SDKMessage 流，使 AgentOrchestrator 几乎无需感知
  * 后端差异。
  *
- * 依赖：用户必须先全局安装 codex CLI：
- *   - macOS / Linux:   curl -fsSL https://chatgpt.com/codex/install.sh | sh
- *   - npm:             npm install -g @openai/codex
- *   - Homebrew:        brew install --cask codex
+ * 依赖：优先使用 @openai/codex-sdk 通过 @openai/codex 解析的包内 native binary；
+ * 如果打包产物或本地依赖缺少该 binary，再 fallback 到用户 PATH 中的 codex CLI。
  *
  * MVP 范围：
  *   - 文本对话 / 图片输入 / 命令执行 / 文件变更 / 计划更新 / 网络检索
@@ -42,7 +40,14 @@ import type {
   SDKResultMessage,
   SDKSystemMessage,
   JsonSchemaOutputFormat,
+  SDKMessageMetadata,
+  AgentContextUsage,
 } from '@mroma/shared'
+import {
+  formatCodexExecutionError,
+  isCodexBinaryResolutionError,
+  resolveCodexBinaryFromPath,
+} from '../codex-cli-resolver'
 
 // ============================================================================
 // orchestrator 传入的 query options 子集（与 ClaudeAgentQueryOptions 兼容）
@@ -182,6 +187,8 @@ interface CodexResultUsageOptions {
   contextWindow?: number
 }
 
+type CodexCtor = typeof import('@openai/codex-sdk').Codex
+
 function makeAssistantText(text: string, model?: string): SDKAssistantMessage {
   return {
     type: 'assistant',
@@ -249,13 +256,32 @@ function markCodexStreamingMessage<T extends SDKMessage>(
   message: T,
   key: string,
   transient: boolean,
+  itemStatus?: SDKMessageMetadata['itemStatus'],
+  sourceEvent?: string,
 ): T {
   const record = message as Record<string, unknown>
-  record._codexStreamingKey = key
-  if (transient) {
-    record._codexTransient = true
+  const existingMetadata = (record.metadata && typeof record.metadata === 'object')
+    ? record.metadata as SDKMessageMetadata
+    : undefined
+  record.metadata = {
+    ...existingMetadata,
+    backend: 'codex',
+    streamingKey: key,
+    transient,
+    ...(itemStatus && { itemStatus }),
+    ...(sourceEvent && { sourceEvent }),
   }
   return message
+}
+
+function inferItemStatus(
+  item: CodexItem,
+  transient: boolean,
+  includeToolResult: boolean,
+): SDKMessageMetadata['itemStatus'] {
+  if (item.status === 'failed') return 'failed'
+  if (!transient) return 'completed'
+  return includeToolResult ? 'updated' : 'started'
 }
 
 function stringifyCodexPayload(value: unknown): string {
@@ -330,6 +356,34 @@ export function buildCodexTurnUsage(
   }
 }
 
+export function buildCodexContextUsage(
+  codexUsage: CodexUsage | undefined,
+  options: CodexResultUsageOptions = {},
+): AgentContextUsage {
+  const inputTokens = codexUsage?.input_tokens ?? 0
+  const cachedInputTokens = codexUsage?.cached_input_tokens ?? 0
+  const outputTokens = codexUsage?.output_tokens ?? 0
+  const reasoningTokens = codexUsage?.reasoning_output_tokens ?? 0
+  const estimatedActiveTokens = inputTokens + outputTokens + reasoningTokens
+  const contextWindow = inferCodexContextWindow(options.model, options.contextWindow)
+  return {
+    backend: 'codex',
+    source: 'estimated',
+    scope: 'turn',
+    inputTokens,
+    cachedInputTokens,
+    outputTokens,
+    reasoningTokens,
+    estimatedActiveTokens,
+    ...(contextWindow && { contextWindow }),
+    ...(contextWindow && estimatedActiveTokens > 0 && {
+      usedPercent: Math.round((estimatedActiveTokens / contextWindow) * 100),
+    }),
+    ...(options.model && { model: options.model }),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
 /**
  * 把 Codex item.completed 中的单个 item 转换为一组伪 SDKMessage。
  *
@@ -344,6 +398,10 @@ export function convertCodexItemToSDKMessages(
   const toolUseId = item.id
   const transient = options.transient ?? false
   const includeToolResult = options.includeToolResult ?? true
+  const itemStatus = inferItemStatus(item, transient, includeToolResult)
+  const sourceEvent = transient
+    ? (includeToolResult ? 'item.updated' : 'item.started')
+    : 'item.completed'
   const assistantKey = `codex:${item.id}:assistant`
   const resultKey = `codex:${item.id}:result`
   const systemKey = `codex:${item.id}:system`
@@ -351,20 +409,20 @@ export function convertCodexItemToSDKMessages(
   switch (item.type) {
     case 'agent_message': {
       if (item.text) {
-        messages.push(markCodexStreamingMessage(makeAssistantText(item.text), assistantKey, transient))
+        messages.push(markCodexStreamingMessage(makeAssistantText(item.text), assistantKey, transient, itemStatus, sourceEvent))
       }
       break
     }
     case 'reasoning': {
       const text = item.reasoning || item.text || ''
       if (text) {
-        messages.push(markCodexStreamingMessage(makeAssistantThinking(text), assistantKey, transient))
+        messages.push(markCodexStreamingMessage(makeAssistantThinking(text), assistantKey, transient, itemStatus, sourceEvent))
       }
       break
     }
     case 'command_execution': {
       const command = item.command || ''
-      messages.push(markCodexStreamingMessage(makeAssistantToolUse(toolUseId, 'Bash', { command }), assistantKey, transient))
+      messages.push(markCodexStreamingMessage(makeAssistantToolUse(toolUseId, 'Bash', { command }), assistantKey, transient, itemStatus, sourceEvent))
       const stdout = item.aggregated_output || item.stdout || item.output || ''
       const stderr = item.stderr || ''
       const exitCode = item.exit_code
@@ -380,6 +438,8 @@ export function convertCodexItemToSDKMessages(
           makeUserToolResult(toolUseId, resultParts.join('\n\n') || '(no output)', isError),
           resultKey,
           transient,
+          itemStatus,
+          sourceEvent,
         ))
       }
       break
@@ -396,23 +456,25 @@ export function convertCodexItemToSDKMessages(
           }),
           assistantKey,
           transient,
+          itemStatus,
+          sourceEvent,
         ),
       )
       if (includeToolResult) {
-        messages.push(markCodexStreamingMessage(makeUserToolResult(toolUseId, summary || '(no changes)', false), resultKey, transient))
+        messages.push(markCodexStreamingMessage(makeUserToolResult(toolUseId, summary || '(no changes)', false), resultKey, transient, itemStatus, sourceEvent))
       }
       break
     }
     case 'mcp_tool_call': {
       const toolName = `${item.server ?? 'mcp'}__${item.tool ?? item.name ?? 'tool'}`
       const args = (item.arguments as Record<string, unknown>) ?? {}
-      messages.push(markCodexStreamingMessage(makeAssistantToolUse(toolUseId, toolName, args), assistantKey, transient))
+      messages.push(markCodexStreamingMessage(makeAssistantToolUse(toolUseId, toolName, args), assistantKey, transient, itemStatus, sourceEvent))
       const isError = item.status === 'failed' || item.error != null
       const resultText = isError
         ? ((item.error?.message ?? stringifyCodexPayload(item.result)) || '(tool failed)')
         : (stringifyCodexPayload(item.result) || '(no result)')
       if (includeToolResult) {
-        messages.push(markCodexStreamingMessage(makeUserToolResult(toolUseId, resultText, isError), resultKey, transient))
+        messages.push(markCodexStreamingMessage(makeUserToolResult(toolUseId, resultText, isError), resultKey, transient, itemStatus, sourceEvent))
       }
       break
     }
@@ -422,13 +484,15 @@ export function convertCodexItemToSDKMessages(
           makeAssistantToolUse(toolUseId, 'WebSearch', { query: item.query ?? '' }),
           assistantKey,
           transient,
+          itemStatus,
+          sourceEvent,
         ),
       )
       const resultText = typeof item.results === 'string'
         ? item.results
         : JSON.stringify(item.results ?? '', null, 2)
       if (includeToolResult) {
-        messages.push(markCodexStreamingMessage(makeUserToolResult(toolUseId, resultText, false), resultKey, transient))
+        messages.push(markCodexStreamingMessage(makeUserToolResult(toolUseId, resultText, false), resultKey, transient, itemStatus, sourceEvent))
       }
       break
     }
@@ -445,28 +509,31 @@ export function convertCodexItemToSDKMessages(
           }),
           assistantKey,
           transient,
+          itemStatus,
+          sourceEvent,
         ),
       )
       const planText = steps.length > 0
         ? steps.map((s) => `[${s.status ?? 'pending'}] ${s.step}`).join('\n')
         : JSON.stringify(item.plan ?? '', null, 2)
       if (includeToolResult) {
-        messages.push(markCodexStreamingMessage(makeUserToolResult(toolUseId, planText, false), resultKey, transient))
+        messages.push(markCodexStreamingMessage(makeUserToolResult(toolUseId, planText, false), resultKey, transient, itemStatus, sourceEvent))
       }
       break
     }
     case 'error': {
       const message = typeof item.message === 'string' ? item.message : 'Codex reported a non-fatal error'
-      messages.push(markCodexStreamingMessage(makeAssistantText(message), assistantKey, transient))
+      messages.push(markCodexStreamingMessage(makeAssistantText(message), assistantKey, transient, itemStatus, sourceEvent))
       break
     }
     default: {
+      const { type: itemType, ...itemPayload } = item
       const sys: SDKSystemMessage = {
         type: 'system',
-        subtype: `codex_${item.type}`,
-        ...(item as unknown as Record<string, unknown>),
+        subtype: `codex_${itemType}`,
+        ...itemPayload,
       }
-      messages.push(markCodexStreamingMessage(sys, systemKey, transient))
+      messages.push(markCodexStreamingMessage(sys, systemKey, transient, itemStatus, sourceEvent))
       break
     }
   }
@@ -481,15 +548,42 @@ function makeResultMessage(
   options: CodexResultUsageOptions = {},
 ): SDKResultMessage {
   const turnUsage = buildCodexTurnUsage(usage)
+  const contextUsage = buildCodexContextUsage(usage, options)
   const contextWindow = inferCodexContextWindow(options.model, options.contextWindow)
   return {
     type: 'result',
     subtype,
     usage: turnUsage,
+    contextUsage,
     ...(options.model && contextWindow && {
       modelUsage: { [options.model]: { contextWindow } },
     }),
     ...(errors && errors.length > 0 && { errors }),
+  }
+}
+
+function createCodexInstance(
+  CodexCtor: CodexCtor,
+  options: import('@openai/codex-sdk').CodexOptions,
+): InstanceType<CodexCtor> {
+  return new CodexCtor(options) as InstanceType<CodexCtor>
+}
+
+function createCodexWithFallback(
+  CodexCtor: CodexCtor,
+  options: import('@openai/codex-sdk').CodexOptions,
+  env: Record<string, string>,
+): { codex: InstanceType<CodexCtor>; codexPathOverride?: string } {
+  try {
+    return { codex: createCodexInstance(CodexCtor, options) }
+  } catch (error) {
+    if (!isCodexBinaryResolutionError(error)) throw error
+    const fallbackPath = resolveCodexBinaryFromPath(env)
+    if (!fallbackPath) throw error
+    return {
+      codex: createCodexInstance(CodexCtor, { ...options, codexPathOverride: fallbackPath }),
+      codexPathOverride: fallbackPath,
+    }
   }
 }
 
@@ -594,7 +688,7 @@ export class CodexAgentAdapter implements AgentProviderAdapter {
       CodexCtor = mod.Codex
     } catch (err) {
       yield makeResultMessage('error_during_execution', undefined, [
-        `无法加载 @openai/codex-sdk: ${err instanceof Error ? err.message : String(err)}。请确认已安装 codex CLI（npm i -g @openai/codex 或 brew install --cask codex）。`,
+        `无法加载 @openai/codex-sdk: ${err instanceof Error ? err.message : String(err)}。请确认应用依赖完整，或重新安装 Mroma。`,
       ], resultUsageOptions)
       activeControllers.delete(sessionId)
       return
@@ -619,12 +713,24 @@ export class CodexAgentAdapter implements AgentProviderAdapter {
     //    自 2026-02 PR #10157 起彻底移除 wire_api = "chat" 支持，回退方案已删除。
     //    如需接入只有 Chat Completions 的端点，建议在本地起 va-ai-api-bridge 等
     //    Responses→Chat proxy，并把渠道 baseUrl 指向该 proxy。
-    const codex = new CodexCtor({
-      apiKey,
-      ...(baseUrl && { baseUrl }),
-      ...(fastMode && { config: buildCodexConfig(fastMode) }),
-      env: codexEnv,
-    })
+    let codex: InstanceType<CodexCtor>
+    try {
+      const created = createCodexWithFallback(CodexCtor, {
+        apiKey,
+        ...(baseUrl && { baseUrl }),
+        ...(fastMode && { config: buildCodexConfig(fastMode) }),
+        env: codexEnv,
+      }, codexEnv)
+      codex = created.codex
+      if (created.codexPathOverride) {
+        onStderr?.(`[codex] fallback binary: ${created.codexPathOverride}`)
+      }
+    } catch (err) {
+      const message = formatCodexExecutionError(err, { baseUrl, resumeSessionId })
+      yield makeResultMessage('error_during_execution', undefined, [message], resultUsageOptions)
+      activeControllers.delete(sessionId)
+      return
+    }
 
     // 5. 构造 ThreadOptions（sandbox / approval / model / cwd 都放这里）
     const modelReasoningEffort = mapEffortToCodex(effort)
@@ -730,13 +836,13 @@ export class CodexAgentAdapter implements AgentProviderAdapter {
             break
           }
           case 'turn.failed': {
-            const message = event.error?.message ?? event.message ?? 'turn failed'
+            const message = formatCodexExecutionError(event.error?.message ?? event.message ?? 'turn failed', { baseUrl, resumeSessionId })
             yield makeResultMessage('error_during_execution', finalUsage, [message], resultUsageOptions)
             resultEmitted = true
             break
           }
           case 'error': {
-            const message = event.error?.message ?? event.message ?? 'codex error'
+            const message = formatCodexExecutionError(event.error?.message ?? event.message ?? 'codex error', { baseUrl, resumeSessionId })
             onStderr?.(message)
             yield makeResultMessage('error_during_execution', finalUsage, [message], resultUsageOptions)
             resultEmitted = true
@@ -756,7 +862,7 @@ export class CodexAgentAdapter implements AgentProviderAdapter {
         yield makeResultMessage('success', finalUsage, undefined, resultUsageOptions)
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = formatCodexExecutionError(err, { baseUrl, resumeSessionId })
       onStderr?.(message)
       yield makeResultMessage('error_during_execution', finalUsage, [message], resultUsageOptions)
     } finally {

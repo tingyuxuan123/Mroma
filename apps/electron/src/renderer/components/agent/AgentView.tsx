@@ -435,10 +435,15 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     isCompacting: streamState?.isCompacting ?? false,
     inputTokens: streamState?.inputTokens,
     outputTokens: streamState?.outputTokens,
+    reasoningTokens: streamState?.reasoningTokens,
     cacheReadTokens: streamState?.cacheReadTokens,
     cacheCreationTokens: streamState?.cacheCreationTokens,
     costUsd: streamState?.costUsd,
     contextWindow: userContextTokenLimit ?? streamState?.contextWindow,
+    contextUsageSource: streamState?.contextUsageSource,
+    contextUsageScope: streamState?.contextUsageScope,
+    contextUsageBackend: streamState?.contextUsageBackend,
+    estimatedActiveTokens: streamState?.estimatedActiveTokens,
   }
   const setAgentStreamErrors = useSetAtom(agentStreamErrorsAtom)
   const streamErrors = useAtomValue(agentStreamErrorsAtom)
@@ -1891,9 +1896,14 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         <ContextUsageBadge
           inputTokens={contextStatus.inputTokens}
           outputTokens={contextStatus.outputTokens}
+          reasoningTokens={contextStatus.reasoningTokens}
           cacheReadTokens={contextStatus.cacheReadTokens}
           cacheCreationTokens={contextStatus.cacheCreationTokens}
           contextWindow={contextStatus.contextWindow}
+          estimatedActiveTokens={contextStatus.estimatedActiveTokens}
+          usageSource={contextStatus.contextUsageSource}
+          usageScope={contextStatus.contextUsageScope}
+          usageBackend={contextStatus.contextUsageBackend}
           autoCompactEnabled={selectedModelAdvancedConfig?.autoCompactEnabled}
           autoCompactThresholdPercent={selectedModelAdvancedConfig?.autoCompactThresholdPercent}
           isCompacting={contextStatus.isCompacting}
@@ -1925,9 +1935,14 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     handleAttachFolder,
     contextStatus.inputTokens,
     contextStatus.outputTokens,
+    contextStatus.reasoningTokens,
     contextStatus.cacheReadTokens,
     contextStatus.cacheCreationTokens,
     contextStatus.contextWindow,
+    contextStatus.estimatedActiveTokens,
+    contextStatus.contextUsageSource,
+    contextStatus.contextUsageScope,
+    contextStatus.contextUsageBackend,
     selectedModelAdvancedConfig?.autoCompactEnabled,
     selectedModelAdvancedConfig?.autoCompactThresholdPercent,
     contextStatus.isCompacting,

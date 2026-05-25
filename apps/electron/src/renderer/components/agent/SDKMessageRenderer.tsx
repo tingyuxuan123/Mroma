@@ -161,6 +161,24 @@ function extractTurnUsage(turnMessages: SDKMessage[]): { durationMs?: number; us
     const resultMsg = msg as SDKResultMessage
     const raw = msg as Record<string, unknown>
     const durationMs = typeof raw._durationMs === 'number' ? raw._durationMs : undefined
+    if (resultMsg.contextUsage) {
+      const contextUsage = resultMsg.contextUsage
+      return {
+        durationMs,
+        usage: {
+          inputTokens: contextUsage.inputTokens,
+          outputTokens: contextUsage.outputTokens,
+          reasoningTokens: contextUsage.reasoningTokens,
+          cacheReadTokens: contextUsage.cachedInputTokens,
+          costUsd: resultMsg.total_cost_usd,
+          contextWindow: contextUsage.contextWindow,
+          estimatedActiveTokens: contextUsage.estimatedActiveTokens,
+          backend: contextUsage.backend,
+          source: contextUsage.source,
+          scope: contextUsage.scope,
+        },
+      }
+    }
     const u = resultMsg.usage
     if (!u) return { durationMs }
     const contextWindow = resultMsg.modelUsage

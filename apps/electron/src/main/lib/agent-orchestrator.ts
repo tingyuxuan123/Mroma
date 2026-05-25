@@ -422,13 +422,20 @@ const DEFAULT_MODEL_ID = 'claude-sonnet-4-6'
 
 function stripCodexStreamingMetadata(message: SDKMessage): SDKMessage {
   const record = message as Record<string, unknown>
-  if (!('_codexStreamingKey' in record) && !('_codexTransient' in record)) {
+  const metadata = record.metadata as import('@mroma/shared').SDKMessageMetadata | undefined
+  if (!('_codexStreamingKey' in record) && !('_codexTransient' in record) && !metadata?.transient) {
     return message
   }
 
   const cleanRecord = { ...record }
   delete cleanRecord._codexStreamingKey
   delete cleanRecord._codexTransient
+  if (metadata?.transient) {
+    const cleanMetadata = { ...metadata }
+    delete cleanMetadata.transient
+    delete cleanMetadata.streamingKey
+    cleanRecord.metadata = Object.keys(cleanMetadata).length > 0 ? cleanMetadata : undefined
+  }
   return cleanRecord as unknown as SDKMessage
 }
 
@@ -933,7 +940,9 @@ export class AgentOrchestrator {
     if (accumulatedMessages.length === 0) return
 
     const toPersist = accumulatedMessages.filter((m) => {
-      if ((m as Record<string, unknown>)._codexTransient) return false
+      const record = m as Record<string, unknown>
+      const metadata = record.metadata as import('@mroma/shared').SDKMessageMetadata | undefined
+      if (record._codexTransient || metadata?.transient) return false
       return m.type === 'assistant' || m.type === 'user' || m.type === 'result'
         || (m.type === 'system' && ['compact_boundary', 'permission_denied'].includes((m as import('@mroma/shared').SDKSystemMessage).subtype ?? ''))
     }).filter((m) => {

@@ -59,7 +59,7 @@ import { agentDiffUnseenChangesAtom, agentDiffUnseenFilesAtom, agentDiffPanelTab
 import { autoPreviewEnabledAtom, previewPanelOpenMapAtom, previewFileMapAtom } from '@/atoms/preview-atoms'
 import type { NotificationSoundType } from '@/types/settings'
 import { toast } from 'sonner'
-import type { AgentStreamEvent, AgentStreamCompletePayload, AgentEvent, AgentStreamPayload, SDKAssistantMessage, SDKUserMessage, SDKSystemMessage, SDKContentBlock, SDKUserContentBlock } from '@mroma/shared'
+import type { AgentStreamEvent, AgentStreamCompletePayload, AgentEvent, AgentStreamPayload, SDKAssistantMessage, SDKUserMessage, SDKSystemMessage, SDKResultMessage, SDKContentBlock, SDKUserContentBlock, SDKMessageMetadata } from '@mroma/shared'
 import { shouldAutoCompactContext } from '@/lib/agent-auto-compact'
 
 /** 触发右侧文件浏览器自动定位的写入类工具集合 */
@@ -99,6 +99,19 @@ function cyrb53(str: string): string {
 
 function uniqueTruthyPaths(paths: Array<string | null | undefined>): string[] {
   return Array.from(new Set(paths.filter((p): p is string => typeof p === 'string' && p.length > 0)))
+}
+
+function getSDKMessageMetadata(record: Record<string, unknown>): SDKMessageMetadata | undefined {
+  return record.metadata && typeof record.metadata === 'object'
+    ? record.metadata as SDKMessageMetadata
+    : undefined
+}
+
+function getSDKMessageStreamingKey(record: Record<string, unknown>): string | undefined {
+  const metadataKey = getSDKMessageMetadata(record)?.streamingKey
+  if (typeof metadataKey === 'string' && metadataKey.length > 0) return metadataKey
+  const legacyKey = record._codexStreamingKey
+  return typeof legacyKey === 'string' && legacyKey.length > 0 ? legacyKey : undefined
 }
 
 // ============================================================================
@@ -248,8 +261,27 @@ function payloadToLegacyEvents(payload: AgentStreamPayload): AgentEvent[] {
     }
 
     case 'result': {
-      const rMsg = msg as { subtype: string; usage?: { input_tokens: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }; total_cost_usd?: number; modelUsage?: Record<string, { contextWindow?: number }> }
+      const rMsg = msg as SDKResultMessage
       const usage = rMsg.usage
+      if (rMsg.contextUsage) {
+        const contextUsage = rMsg.contextUsage
+        return [{
+          type: 'complete',
+          stopReason: rMsg.subtype === 'success' ? 'end_turn' : 'error',
+          usage: {
+            inputTokens: contextUsage.inputTokens,
+            outputTokens: contextUsage.outputTokens,
+            reasoningTokens: contextUsage.reasoningTokens,
+            cacheReadTokens: contextUsage.cachedInputTokens,
+            costUsd: rMsg.total_cost_usd,
+            contextWindow: contextUsage.contextWindow,
+            estimatedActiveTokens: contextUsage.estimatedActiveTokens,
+            backend: contextUsage.backend,
+            source: contextUsage.source,
+            scope: contextUsage.scope,
+          },
+        }]
+      }
       // Claude 官方渠道与 Codex adapter 会提供 modelUsage；第三方兼容渠道缺失时按模型名兜底。
       const modelEntry = rMsg.modelUsage ? Object.entries(rMsg.modelUsage)[0] : undefined
       const contextWindow = modelEntry?.[1]?.contextWindow ?? inferContextWindow(modelEntry?.[0])
@@ -656,11 +688,11 @@ export function useGlobalAgentListeners(): void {
             store.set(liveMessagesMapAtom, (prev) => {
               const map = new Map(prev)
               const current = map.get(sessionId) ?? []
-              const streamingKey = msgRecord._codexStreamingKey as string | undefined
+              const streamingKey = getSDKMessageStreamingKey(msgRecord)
 
               if (streamingKey) {
                 const existingIndex = current.findIndex((message) =>
-                  (message as Record<string, unknown>)._codexStreamingKey === streamingKey
+                  getSDKMessageStreamingKey(message as Record<string, unknown>) === streamingKey
                 )
                 if (existingIndex >= 0) {
                   const next = [...current]

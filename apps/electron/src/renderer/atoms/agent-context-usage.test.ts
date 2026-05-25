@@ -80,4 +80,32 @@ describe('Agent 上下文用量指示器状态', () => {
     expect(next.cacheCreationTokens).toBe(4_000)
     expect(next.contextWindow).toBe(200_000)
   })
+
+  test('given codex estimated context usage when result usage arrives then stores estimated metadata', () => {
+    const next = applyAgentEvent(createRunningState(), {
+      type: 'complete',
+      stopReason: 'end_turn',
+      usage: {
+        inputTokens: 120_000,
+        outputTokens: 5_000,
+        reasoningTokens: 2_000,
+        cacheReadTokens: 80_000,
+        contextWindow: 400_000,
+        estimatedActiveTokens: 127_000,
+        backend: 'codex',
+        source: 'estimated',
+        scope: 'turn',
+      },
+    })
+
+    expect(next.inputTokens).toBe(120_000)
+    expect(next.outputTokens).toBe(5_000)
+    expect(next.reasoningTokens).toBe(2_000)
+    expect(next.cacheReadTokens).toBe(80_000)
+    expect(next.contextWindow).toBe(400_000)
+    expect(next.estimatedActiveTokens).toBe(127_000)
+    expect(next.contextUsageBackend).toBe('codex')
+    expect(next.contextUsageSource).toBe('estimated')
+    expect(next.contextUsageScope).toBe('turn')
+  })
 })

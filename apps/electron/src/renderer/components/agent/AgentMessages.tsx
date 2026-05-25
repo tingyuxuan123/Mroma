@@ -35,7 +35,7 @@ import { cn } from '@/lib/utils'
 import { Spinner } from '@/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { groupIntoTurns, MessageGroupRenderer, getGroupId, getGroupPreview, extractUserText, parseAttachedFiles as sdkParseAttachedFiles, isImageFile as sdkIsImageFile, CompactingIndicator, buildHistoricalTaskSubjects, type MessageGroup } from './SDKMessageRenderer'
-import type { AgentEventUsage, RetryAttempt, SDKMessage } from '@mroma/shared'
+import type { AgentEventUsage, RetryAttempt, SDKMessage, SDKMessageMetadata } from '@mroma/shared'
 import type { AgentStreamState } from '@/atoms/agent-atoms'
 
 function stableStringify(value: unknown): string {
@@ -53,6 +53,12 @@ function getSDKMessageStableKey(message: SDKMessage): string {
   const record = message as Record<string, unknown>
   if (typeof record.uuid === 'string' && record.uuid.length > 0) {
     return `${message.type}:uuid:${record.uuid}`
+  }
+  const metadata = record.metadata && typeof record.metadata === 'object'
+    ? record.metadata as SDKMessageMetadata
+    : undefined
+  if (typeof metadata?.streamingKey === 'string' && metadata.streamingKey.length > 0) {
+    return `${message.type}:stream:${metadata.streamingKey}`
   }
   if (typeof record._codexStreamingKey === 'string' && record._codexStreamingKey.length > 0) {
     return `${message.type}:codex:${record._codexStreamingKey}`

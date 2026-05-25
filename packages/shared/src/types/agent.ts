@@ -174,6 +174,39 @@ export interface SDKThinkingBlock {
   thinking: string
 }
 
+/** Agent 后端标识 */
+export type AgentBackend = 'claude' | 'codex'
+
+/** SDKMessage 通用元数据（不属于上游 SDK 原始协议） */
+export interface SDKMessageMetadata {
+  /** 产生该消息的后端 */
+  backend?: AgentBackend
+  /** 同一个流式 item 的稳定替换 key */
+  streamingKey?: string
+  /** 临时流式消息，完成后不应持久化 */
+  transient?: boolean
+  /** 底层 item 的阶段状态 */
+  itemStatus?: 'started' | 'updated' | 'completed' | 'failed'
+  /** 底层事件类型，例如 item.started / item.updated */
+  sourceEvent?: string
+}
+
+/** 统一上下文用量语义。Codex 当前只能提供估算值。 */
+export interface AgentContextUsage {
+  backend: AgentBackend
+  source: 'sdk' | 'estimated' | 'configured' | 'fallback'
+  scope: 'turn' | 'active_context' | 'session'
+  inputTokens: number
+  cachedInputTokens?: number
+  outputTokens?: number
+  reasoningTokens?: number
+  estimatedActiveTokens?: number
+  contextWindow?: number
+  usedPercent?: number
+  model?: string
+  updatedAt?: string
+}
+
 /** SDK 内容块联合类型 */
 export type SDKContentBlock =
   | SDKTextBlock
@@ -217,6 +250,7 @@ export interface SDKAssistantMessage {
   isReplay?: boolean
   /** 渠道配置的模型 ID，持久化/流式期间注入，用于正确匹配模型显示名 */
   _channelModelId?: string
+  metadata?: SDKMessageMetadata
 }
 
 /** SDK user 消息 */
@@ -233,6 +267,7 @@ export interface SDKUserMessage {
   isReplay?: boolean
   /** SDK 合成的消息（如 Skill 展开 prompt），非人类用户输入 */
   isSynthetic?: boolean
+  metadata?: SDKMessageMetadata
 }
 
 /** SDK result 消息（查询结束时返回） */
@@ -247,8 +282,11 @@ export interface SDKResultMessage {
   }
   total_cost_usd?: number
   modelUsage?: Record<string, { contextWindow?: number }>
+  /** 归一化上下文用量；用于区分 SDK 精确值与 provider 估算值 */
+  contextUsage?: AgentContextUsage
   errors?: string[]
   session_id?: string
+  metadata?: SDKMessageMetadata
 }
 
 /** SDK system 消息（init / compact_boundary / permission_denied / task_started / task_progress / task_notification） */
@@ -273,6 +311,7 @@ export interface SDKSystemMessage {
   decision_reason_type?: string
   decision_reason?: string
   usage?: { total_tokens?: number; tool_uses?: number; duration_ms?: number }
+  metadata?: SDKMessageMetadata
   [key: string]: unknown
 }
 
@@ -286,6 +325,7 @@ export interface SDKToolProgressMessage {
   /** 所属 SDK 子任务 / SubAgent 任务 ID */
   task_id?: string
   session_id?: string
+  metadata?: SDKMessageMetadata
 }
 
 /** SDK prompt_suggestion 消息 */
@@ -293,6 +333,7 @@ export interface SDKPromptSuggestionMessage {
   type: 'prompt_suggestion'
   suggestion?: string
   session_id?: string
+  metadata?: SDKMessageMetadata
 }
 
 /** SDK tool_use_summary 消息 */
@@ -301,6 +342,7 @@ export interface SDKToolUseSummaryMessage {
   summary?: string
   preceding_tool_use_ids?: string[]
   session_id?: string
+  metadata?: SDKMessageMetadata
 }
 
 /** SDK 消息联合类型（v1 query + includePartialMessages: false 返回的完整 JSON 对象） */
@@ -390,10 +432,15 @@ export interface TypedError {
 export interface AgentEventUsage {
   inputTokens: number
   outputTokens?: number
+  reasoningTokens?: number
   cacheReadTokens?: number
   cacheCreationTokens?: number
   costUsd?: number
   contextWindow?: number
+  estimatedActiveTokens?: number
+  backend?: AgentBackend
+  source?: AgentContextUsage['source']
+  scope?: AgentContextUsage['scope']
 }
 
 /** SDK 子任务 / SubAgent 用量统计 */

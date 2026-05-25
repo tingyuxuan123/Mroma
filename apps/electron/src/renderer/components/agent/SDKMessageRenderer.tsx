@@ -58,6 +58,7 @@ import {
   isThinkingSignatureError,
 } from '@mroma/shared'
 import type { ToolActivity } from '@/atoms/agent-atoms'
+import { buildCompactBoundaryViewModel } from './compact-boundary-view'
 
 // ===== SDKMessageRenderer Props =====
 
@@ -76,14 +77,75 @@ export interface SDKMessageRendererProps {
 
 // ===== system 消息：上下文压缩分割线 =====
 
-function CompactBoundaryDivider(): React.ReactElement {
+function CompactBoundaryDivider({ message }: { message: SDKSystemMessage }): React.ReactElement {
+  const [expanded, setExpanded] = React.useState(false)
+  const view = buildCompactBoundaryViewModel(message)
+  const shouldCollapse = Boolean(view.summary && view.summary.length > 480)
+
   return (
-    <div className="flex items-center gap-3 my-4 px-1">
-      <div className="flex-1 h-px bg-border/40" />
-      <span className="shrink-0 text-[11px] text-muted-foreground/60 px-2 py-0.5 rounded-full border border-border/30 bg-muted/20">
-        上下文已压缩
-      </span>
-      <div className="flex-1 h-px bg-border/40" />
+    <div className="my-5 space-y-3 px-1">
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-px bg-border/40" />
+        <span className="shrink-0 inline-flex items-center gap-1.5 text-[11px] text-muted-foreground/70 px-2 py-0.5 rounded-full border border-border/30 bg-muted/20">
+          <Split className="size-3" />
+          上下文已压缩
+        </span>
+        <div className="flex-1 h-px bg-border/40" />
+      </div>
+
+      {view.summary && (
+        <div className="mx-auto max-w-3xl rounded-2xl bg-background/85 p-4 shadow-sm ring-1 ring-border/40">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium text-sm text-foreground">压缩摘要已接入后续上下文</span>
+                {view.backendLabel && (
+                  <Badge variant="secondary" className="h-5 rounded-full px-2 text-[11px] font-normal">
+                    {view.backendLabel}
+                  </Badge>
+                )}
+                {view.reasonLabel && (
+                  <Badge variant="outline" className="h-5 rounded-full px-2 text-[11px] font-normal text-muted-foreground">
+                    {view.reasonLabel}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs leading-relaxed text-muted-foreground">{view.description}</p>
+              {(view.compactedAtLabel || view.oldSdkSessionId) && (
+                <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground/70">
+                  {view.compactedAtLabel && <span>完成时间：{view.compactedAtLabel}</span>}
+                  {view.oldSdkSessionId && (
+                    <span className="max-w-[260px] truncate font-mono">旧 thread：{view.oldSdkSessionId}</span>
+                  )}
+                </div>
+              )}
+            </div>
+            <CopyButton content={view.summary} />
+          </div>
+
+          <div className="mt-3 rounded-xl bg-muted/30 p-3">
+            <pre
+              className={cn(
+                'whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-foreground/85',
+                shouldCollapse && !expanded && 'max-h-32 overflow-hidden',
+              )}
+            >
+              {view.summary}
+            </pre>
+            {shouldCollapse && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="mt-2 h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => setExpanded((value) => !value)}
+              >
+                {expanded ? '收起摘要' : '展开完整摘要'}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -786,7 +848,7 @@ export function SDKMessageRenderer({
     const subtype = sysMsg.subtype
 
     if (subtype === 'compact_boundary') {
-      return <CompactBoundaryDivider />
+      return <CompactBoundaryDivider message={sysMsg} />
     }
     if (subtype === 'permission_denied') {
       return <PermissionDeniedNotice message={sysMsg} />
@@ -1301,7 +1363,7 @@ export function MessageGroupRenderer({ group, allMessages, historicalTaskSubject
 
   if (group.type === 'system') {
     const subtype = group.message.subtype
-    if (subtype === 'compact_boundary') return <div data-message-id={groupId}><CompactBoundaryDivider /></div>
+    if (subtype === 'compact_boundary') return <div data-message-id={groupId}><CompactBoundaryDivider message={group.message} /></div>
     if (subtype === 'compacting') return <div data-message-id={groupId}><CompactingIndicator /></div>
     if (subtype === 'permission_denied') return <div data-message-id={groupId}><PermissionDeniedNotice message={group.message} /></div>
     return null

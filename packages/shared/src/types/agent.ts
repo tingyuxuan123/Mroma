@@ -289,7 +289,7 @@ export interface SDKResultMessage {
   metadata?: SDKMessageMetadata
 }
 
-/** SDK system 消息（init / compact_boundary / permission_denied / task_started / task_progress / task_notification） */
+/** SDK system 消息（init / compact_boundary / compact_failed / permission_denied / task_started / task_progress / task_notification） */
 export interface SDKSystemMessage {
   type: 'system'
   subtype?: string
@@ -533,6 +533,7 @@ export type AgentEvent =
   // 上下文压缩
   | { type: 'compacting' }
   | { type: 'compact_complete' }
+  | { type: 'compact_failed'; message?: string }
   // 权限请求
   | { type: 'permission_request'; request: PermissionRequest }
   | { type: 'permission_resolved'; requestId: string; behavior: 'allow' | 'deny' }

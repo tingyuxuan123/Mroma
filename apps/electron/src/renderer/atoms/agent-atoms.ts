@@ -680,6 +680,9 @@ export function applyAgentEvent(
     case 'compact_complete':
       return { ...prev, isCompacting: false }
 
+    case 'compact_failed':
+      return { ...prev, running: false, isCompacting: false, compactInFlight: false }
+
     case 'model_resolved':
       // 不用 SDK 返回的实际模型名覆盖，保持用户选择的 modelId
       // 以确保 resolveModelDisplayName 能匹配到渠道配置的显示名

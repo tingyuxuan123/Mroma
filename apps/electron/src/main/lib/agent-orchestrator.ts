@@ -949,7 +949,7 @@ export class AgentOrchestrator {
       const metadata = record.metadata as import('@mroma/shared').SDKMessageMetadata | undefined
       if (record._codexTransient || metadata?.transient) return false
       return m.type === 'assistant' || m.type === 'user' || m.type === 'result'
-        || (m.type === 'system' && ['compact_boundary', 'permission_denied'].includes((m as import('@mroma/shared').SDKSystemMessage).subtype ?? ''))
+        || (m.type === 'system' && ['compact_boundary', 'compact_failed', 'permission_denied'].includes((m as import('@mroma/shared').SDKSystemMessage).subtype ?? ''))
     }).filter((m) => {
       // 过滤 SDK 内部生成的 user 文本消息（如 Skill 展开 prompt），与实时流过滤逻辑一致
       if (m.type === 'user') {
@@ -1074,6 +1074,21 @@ export class AgentOrchestrator {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       console.error('[Agent 编排] Codex 托管式压缩失败:', error)
+      const failedAt = new Date().toISOString()
+      const failedMessage: SDKSystemMessage = {
+        type: 'system',
+        subtype: 'compact_failed',
+        session_id: sessionId,
+        status: 'failed',
+        message,
+        reason,
+        failed_at: failedAt,
+        old_sdk_session_id: sessionMeta?.sdkSessionId,
+        metadata: { backend: 'codex', sourceEvent: 'managed_compact' },
+      }
+      accumulatedMessages.push(failedMessage)
+      this.eventBus.emit(sessionId, { kind: 'sdk_message', message: failedMessage })
+      this.persistSDKMessages(sessionId, accumulatedMessages, Date.now() - compactStartedAt)
       callbacks.onError(`压缩上下文失败：${message}`)
       callbacks.onComplete([], {
         startedAt: streamStartedAt,

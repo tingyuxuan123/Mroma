@@ -108,4 +108,18 @@ describe('Agent 上下文用量指示器状态', () => {
     expect(next.contextUsageSource).toBe('estimated')
     expect(next.contextUsageScope).toBe('turn')
   })
+
+  test('given compact is running when compact fails then clears compact flags and stops stream', () => {
+    const next = applyAgentEvent(createRunningState({
+      isCompacting: true,
+      compactInFlight: true,
+    }), {
+      type: 'compact_failed',
+      message: '摘要生成失败',
+    })
+
+    expect(next.running).toBe(false)
+    expect(next.isCompacting).toBe(false)
+    expect(next.compactInFlight).toBe(false)
+  })
 })

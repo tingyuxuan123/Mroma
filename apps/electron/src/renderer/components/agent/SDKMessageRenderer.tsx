@@ -58,7 +58,7 @@ import {
   isThinkingSignatureError,
 } from '@mroma/shared'
 import type { ToolActivity } from '@/atoms/agent-atoms'
-import { buildCompactBoundaryViewModel } from './compact-boundary-view'
+import { buildCompactBoundaryViewModel, buildCompactFailedViewModel } from './compact-boundary-view'
 
 // ===== SDKMessageRenderer Props =====
 
@@ -73,6 +73,8 @@ export interface SDKMessageRendererProps {
   showHeader?: boolean
   /** 用户在前端选择的模型 ID（优先用于显示名称） */
   sessionModelId?: string
+  /** 压缩上下文重试回调 */
+  onCompact?: () => void
 }
 
 // ===== system 消息：上下文压缩分割线 =====
@@ -146,6 +148,63 @@ function CompactBoundaryDivider({ message }: { message: SDKSystemMessage }): Rea
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function CompactFailedNotice({ message, onRetry }: { message: SDKSystemMessage; onRetry?: () => void }): React.ReactElement {
+  const view = buildCompactFailedViewModel(message)
+
+  return (
+    <div className="my-5 px-1">
+      <div className="mx-auto max-w-3xl rounded-2xl bg-destructive/5 p-4 shadow-sm ring-1 ring-destructive/20">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 font-medium text-sm text-foreground">
+                <AlertTriangle className="size-4 text-destructive" />
+                压缩上下文失败
+              </span>
+              {view.backendLabel && (
+                <Badge variant="secondary" className="h-5 rounded-full px-2 text-[11px] font-normal">
+                  {view.backendLabel}
+                </Badge>
+              )}
+              {view.reasonLabel && (
+                <Badge variant="outline" className="h-5 rounded-full px-2 text-[11px] font-normal text-muted-foreground">
+                  {view.reasonLabel}
+                </Badge>
+              )}
+            </div>
+            <p className="text-xs leading-relaxed text-muted-foreground">{view.description}</p>
+            <div className="rounded-xl bg-background/70 p-3 text-xs leading-relaxed text-foreground/85 ring-1 ring-border/40">
+              {view.errorMessage}
+            </div>
+            {(view.failedAtLabel || view.oldSdkSessionId) && (
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground/70">
+                {view.failedAtLabel && <span>失败时间：{view.failedAtLabel}</span>}
+                {view.oldSdkSessionId && (
+                  <span className="max-w-[260px] truncate font-mono">保留 thread：{view.oldSdkSessionId}</span>
+                )}
+              </div>
+            )}
+          </div>
+          <CopyButton content={view.errorMessage} />
+        </div>
+
+        {onRetry && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-3 h-8 text-xs"
+            onClick={onRetry}
+          >
+            <RotateCw className="mr-1.5 size-3.5" />
+            重新压缩上下文
+          </Button>
+        )}
+      </div>
     </div>
   )
 }
@@ -352,7 +411,7 @@ export type MessageGroup =
  * 规则：
  * 1. user（真正用户输入）→ 单独的 user group
  * 2. assistant + user(tool_result) + assistant... → 合并为一个 assistant-turn
- * 3. system（compact_boundary / compacting / permission_denied）→ 独立渲染，其他归入当前 turn
+ * 3. system（compact_boundary / compact_failed / compacting / permission_denied）→ 独立渲染，其他归入当前 turn
  * 4. 其他类型（result, tool_progress 等）→ 归入当前 assistant-turn
  * 5. 后处理：合并相邻同模型的 assistant-turn（处理子代理切换模型导致的碎片化）
  */
@@ -402,9 +461,9 @@ export function groupIntoTurns(messages: SDKMessage[], sessionModelId?: string):
       }
     } else if (msg.type === 'system') {
       const sysMsg = msg as SDKSystemMessage
-      // 仅需要独立渲染的 system 消息才中断 turn（compact_boundary / compacting / permission_denied）
+      // 仅需要独立渲染的 system 消息才中断 turn（compact_boundary / compact_failed / compacting / permission_denied）
       // 其他 system 消息（如 init、task_started、task_progress）归入当前 turn，不中断分组
-      if (sysMsg.subtype === 'compact_boundary' || sysMsg.subtype === 'compacting' || sysMsg.subtype === 'permission_denied') {
+      if (sysMsg.subtype === 'compact_boundary' || sysMsg.subtype === 'compact_failed' || sysMsg.subtype === 'compacting' || sysMsg.subtype === 'permission_denied') {
         flushTurn()
         groups.push({ type: 'system', message: sysMsg })
       } else if (currentTurn) {
@@ -449,7 +508,7 @@ function mergeAdjacentSameModelTurns(groups: MessageGroup[]): MessageGroup[] {
     for (let i = result.length - 1; i >= 0; i--) {
       const prev = result[i]!
       if (prev.type === 'user') break // 真正的用户输入阻断合并
-      if (prev.type === 'system' && ['compact_boundary', 'permission_denied'].includes((prev.message as SDKSystemMessage).subtype ?? '')) break
+      if (prev.type === 'system' && ['compact_boundary', 'compact_failed', 'permission_denied'].includes((prev.message as SDKSystemMessage).subtype ?? '')) break
       if (prev.type === 'assistant-turn') {
         if (prev.model === group.model) {
           mergeTargetIdx = i
@@ -779,6 +838,7 @@ export function SDKMessageRenderer({
   basePath,
   showHeader = true,
   sessionModelId,
+  onCompact,
 }: SDKMessageRendererProps): React.ReactElement | null {
   const channels = useAtomValue(channelsAtom)
   const msgType = message.type
@@ -849,6 +909,9 @@ export function SDKMessageRenderer({
 
     if (subtype === 'compact_boundary') {
       return <CompactBoundaryDivider message={sysMsg} />
+    }
+    if (subtype === 'compact_failed') {
+      return <CompactFailedNotice message={sysMsg} onRetry={onCompact} />
     }
     if (subtype === 'permission_denied') {
       return <PermissionDeniedNotice message={sysMsg} />
@@ -1332,6 +1395,7 @@ export function getGroupPreview(group: MessageGroup): string {
   }
   if (group.type === 'system') {
     if (group.message.subtype === 'compact_boundary') return '上下文已压缩'
+    if (group.message.subtype === 'compact_failed') return '上下文压缩失败'
     if (group.message.subtype === 'compacting') return '正在压缩上下文...'
     if (group.message.subtype === 'permission_denied') return '自动审批已拒绝操作'
     return ''
@@ -1364,6 +1428,7 @@ export function MessageGroupRenderer({ group, allMessages, historicalTaskSubject
   if (group.type === 'system') {
     const subtype = group.message.subtype
     if (subtype === 'compact_boundary') return <div data-message-id={groupId}><CompactBoundaryDivider message={group.message} /></div>
+    if (subtype === 'compact_failed') return <div data-message-id={groupId}><CompactFailedNotice message={group.message} onRetry={onCompact} /></div>
     if (subtype === 'compacting') return <div data-message-id={groupId}><CompactingIndicator /></div>
     if (subtype === 'permission_denied') return <div data-message-id={groupId}><PermissionDeniedNotice message={group.message} /></div>
     return null

@@ -26,6 +26,21 @@ export interface CompactBoundaryViewModel {
   description: string
 }
 
+export interface CompactFailedViewModel {
+  /** 压缩失败原因 */
+  errorMessage: string
+  /** 压缩触发原因中文文案 */
+  reasonLabel?: string
+  /** 后端能力文案 */
+  backendLabel?: string
+  /** 失败时间（稳定格式，便于测试与展示） */
+  failedAtLabel?: string
+  /** 旧 SDK session/thread id，失败时应继续保留可用 */
+  oldSdkSessionId?: string
+  /** 解释失败语义的中文提示 */
+  description: string
+}
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null ? value as Record<string, unknown> : undefined
 }
@@ -71,5 +86,22 @@ export function buildCompactBoundaryViewModel(message: SDKSystemMessage): Compac
     description: backend === 'codex'
       ? '旧 Codex thread 已重置，后续对话会使用这份摘要续接上下文；完整历史仍保留在会话中供你查看。'
       : '旧上下文已被压缩为摘要，后续对话会基于摘要继续；完整历史仍保留在会话中供你查看。',
+  }
+}
+
+export function buildCompactFailedViewModel(message: SDKSystemMessage): CompactFailedViewModel {
+  const record = message as unknown as Record<string, unknown>
+  const metadata = readMetadata(message)
+  const backend = metadata?.backend
+
+  return {
+    errorMessage: readString(record, 'message') ?? '压缩上下文失败，请稍后重试。',
+    reasonLabel: getCompactReasonLabel(record.reason),
+    backendLabel: backend ? BACKEND_LABELS[backend] : undefined,
+    failedAtLabel: formatCompactBoundaryTime(record.failed_at),
+    oldSdkSessionId: readString(record, 'old_sdk_session_id'),
+    description: backend === 'codex'
+      ? 'Codex thread 未被重置，原会话上下文仍保持可用。你可以继续对话，或稍后重新压缩。'
+      : '原会话上下文仍保持可用。你可以继续对话，或稍后重新压缩。',
   }
 }

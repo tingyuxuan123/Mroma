@@ -41,7 +41,6 @@ import type {
   SDKUserMessage,
   SDKResultMessage,
   SDKSystemMessage,
-  SDKCodexCumulativeUsage,
   JsonSchemaOutputFormat,
 } from '@mroma/shared'
 
@@ -84,8 +83,6 @@ interface CodexQueryView extends AgentQueryInput {
   fastMode?: boolean
   /** 模型上下文窗口（来自 Mroma 模型高级配置） */
   contextWindow?: number
-  /** 上一次 Codex exec 暴露的累计 usage，用于把本次累计值换算为本轮用量 */
-  codexPreviousUsage?: SDKCodexCumulativeUsage
 }
 
 // ============================================================================
@@ -183,7 +180,6 @@ interface CodexUsage {
 interface CodexResultUsageOptions {
   model?: string
   contextWindow?: number
-  previousUsage?: SDKCodexCumulativeUsage
 }
 
 function makeAssistantText(text: string, model?: string): SDKAssistantMessage {
@@ -301,23 +297,34 @@ export function buildCodexConfig(fastMode: boolean | undefined): CodexConfigObje
   }
 }
 
-function positiveDelta(current: number | undefined, previous: number | undefined): number {
-  return Math.max(0, (current ?? 0) - (previous ?? 0))
+/**
+ * Codex SDK 的 turn.completed usage 是当前 turn 用量，官方类型定义为
+ * "during a turn"。Mroma 需要一个 contextWindow 分母来展示上下文环；
+ * Codex 本身不返回该字段，因此按模型家族提供保守 fallback。
+ */
+export function inferCodexContextWindow(model: string | undefined, configuredWindow?: number): number | undefined {
+  if (configuredWindow && configuredWindow > 0) return configuredWindow
+  if (!model) return undefined
+
+  const normalized = model.toLowerCase()
+  if (normalized.includes('gpt-4.1')) return 1_000_000
+  if (normalized.includes('gpt-5')) return 400_000
+  if (normalized.includes('o3') || normalized.includes('o4')) return 200_000
+  return 200_000
 }
 
 export function buildCodexTurnUsage(
-  cumulativeUsage: CodexUsage | undefined,
-  previousUsage?: SDKCodexCumulativeUsage,
+  codexUsage: CodexUsage | undefined,
 ): { input_tokens: number; output_tokens: number; cache_read_input_tokens: number } {
-  const cumulativeInputTokens = positiveDelta(cumulativeUsage?.input_tokens, previousUsage?.input_tokens)
-  const cachedInputTokens = positiveDelta(cumulativeUsage?.cached_input_tokens, previousUsage?.cached_input_tokens)
-  const outputTokens = positiveDelta(cumulativeUsage?.output_tokens, previousUsage?.output_tokens)
-  const reasoningOutputTokens = positiveDelta(cumulativeUsage?.reasoning_output_tokens, previousUsage?.reasoning_output_tokens)
+  const inputTokens = codexUsage?.input_tokens ?? 0
+  const cachedInputTokens = codexUsage?.cached_input_tokens ?? 0
+  const outputTokens = codexUsage?.output_tokens ?? 0
+  const reasoningOutputTokens = codexUsage?.reasoning_output_tokens ?? 0
 
   return {
     // Codex/OpenAI 的 input_tokens 已包含 cached_input_tokens；Mroma 前端会把 cache_read
     // 加回 inputTokens，因此这里先扣掉缓存部分，避免上下文用量被双算。
-    input_tokens: Math.max(0, cumulativeInputTokens - cachedInputTokens),
+    input_tokens: Math.max(0, inputTokens - cachedInputTokens),
     output_tokens: outputTokens + reasoningOutputTokens,
     cache_read_input_tokens: cachedInputTokens,
   }
@@ -473,14 +480,14 @@ function makeResultMessage(
   errors?: string[],
   options: CodexResultUsageOptions = {},
 ): SDKResultMessage {
-  const turnUsage = buildCodexTurnUsage(usage, options.previousUsage)
+  const turnUsage = buildCodexTurnUsage(usage)
+  const contextWindow = inferCodexContextWindow(options.model, options.contextWindow)
   return {
     type: 'result',
     subtype,
     usage: turnUsage,
-    ...(usage && { _codexCumulativeUsage: usage }),
-    ...(options.model && options.contextWindow && {
-      modelUsage: { [options.model]: { contextWindow: options.contextWindow } },
+    ...(options.model && contextWindow && {
+      modelUsage: { [options.model]: { contextWindow } },
     }),
     ...(errors && errors.length > 0 && { errors }),
   }
@@ -559,7 +566,6 @@ export class CodexAgentAdapter implements AgentProviderAdapter {
       outputFormat,
       fastMode,
       contextWindow,
-      codexPreviousUsage,
     } = opts
 
     // 1. 抢占式注册 AbortController（外部 abort 需立刻生效）
@@ -572,7 +578,6 @@ export class CodexAgentAdapter implements AgentProviderAdapter {
     const resultUsageOptions: CodexResultUsageOptions = {
       model,
       contextWindow,
-      previousUsage: codexPreviousUsage,
     }
     if (!apiKey) {
       yield makeResultMessage('error_during_execution', undefined, [

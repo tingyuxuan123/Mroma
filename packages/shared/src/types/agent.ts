@@ -247,18 +247,8 @@ export interface SDKResultMessage {
   }
   total_cost_usd?: number
   modelUsage?: Record<string, { contextWindow?: number }>
-  /** Codex exec JSONL 暴露的是累计 usage；保留原始累计值用于下次换算本轮用量 */
-  _codexCumulativeUsage?: SDKCodexCumulativeUsage
   errors?: string[]
   session_id?: string
-}
-
-/** Codex SDK turn.completed 原始累计 usage */
-export interface SDKCodexCumulativeUsage {
-  input_tokens?: number
-  cached_input_tokens?: number
-  output_tokens?: number
-  reasoning_output_tokens?: number
 }
 
 /** SDK system 消息（init / compact_boundary / permission_denied / task_started / task_progress / task_notification） */

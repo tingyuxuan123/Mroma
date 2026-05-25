@@ -119,6 +119,9 @@ function inferContextWindow(model?: string): number | undefined {
   // Claude Sonnet 4+、Opus 4.6+、DeepSeek V4 系列均为 1M 上下文
   if (m.includes('claude-sonnet-4-6') || m.includes('claude-opus-4-6') || m.includes('claude-opus-4-7')) return 1_000_000
   if (m.includes('deepseek-v4')) return 1_000_000
+  if (m.includes('gpt-4.1')) return 1_000_000
+  if (m.includes('gpt-5')) return 400_000
+  if (m.includes('o3') || m.includes('o4')) return 200_000
   return 200_000
 }
 
@@ -247,8 +250,7 @@ function payloadToLegacyEvents(payload: AgentStreamPayload): AgentEvent[] {
     case 'result': {
       const rMsg = msg as { subtype: string; usage?: { input_tokens: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }; total_cost_usd?: number; modelUsage?: Record<string, { contextWindow?: number }> }
       const usage = rMsg.usage
-      // modelUsage 仅 Claude Code SDK 官方渠道才会带 contextWindow；
-      // 第三方 Anthropic 兼容渠道（mimo / minimax / deepseek 等）不带，按模型名推断兜底
+      // Claude 官方渠道与 Codex adapter 会提供 modelUsage；第三方兼容渠道缺失时按模型名兜底。
       const modelEntry = rMsg.modelUsage ? Object.entries(rMsg.modelUsage)[0] : undefined
       const contextWindow = modelEntry?.[1]?.contextWindow ?? inferContextWindow(modelEntry?.[0])
       return [{

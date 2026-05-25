@@ -17,6 +17,7 @@ import type { WebContents } from 'electron'
 import { AGENT_IPC_CHANNELS, MAX_ATTACHMENT_SIZE } from '@mroma/shared'
 import type {
   AgentSendInput,
+  AgentCompactInput,
   AgentGenerateTitleInput,
   AgentSaveFilesInput,
   AgentSaveWorkspaceFilesInput,
@@ -182,6 +183,67 @@ export async function runAgent(
   } finally {
     // 仅在 orchestrator 已完成此会话时清理映射
     // 避免被拒绝的请求误删仍在运行的会话映射
+    if (!orchestrator.isActive(input.sessionId)) {
+      sessionWebContents.delete(input.sessionId)
+    }
+  }
+}
+
+/**
+ * 压缩 Agent 上下文。
+ *
+ * 先提供语义化入口，当前由 orchestrator 统一决定托管式压缩或兼容 /compact。
+ */
+export async function compactAgentContext(
+  input: AgentCompactInput,
+  webContents: WebContents,
+): Promise<void> {
+  registerWebContents(input.sessionId, webContents)
+  try {
+    await orchestrator.compactContext(input, {
+      onError: (error) => {
+        if (!webContents.isDestroyed()) {
+          webContents.send(AGENT_IPC_CHANNELS.STREAM_ERROR, {
+            sessionId: input.sessionId,
+            error,
+          })
+        }
+      },
+      onComplete: (messages, opts) => {
+        if (!webContents.isDestroyed()) {
+          webContents.send(AGENT_IPC_CHANNELS.STREAM_COMPLETE, {
+            sessionId: input.sessionId,
+            messages,
+            stoppedByUser: opts?.stoppedByUser ?? false,
+            startedAt: opts?.startedAt,
+            resultSubtype: opts?.resultSubtype,
+          })
+        }
+      },
+      onTitleUpdated: (title) => {
+        if (!webContents.isDestroyed()) {
+          webContents.send(AGENT_IPC_CHANNELS.TITLE_UPDATED, {
+            sessionId: input.sessionId,
+            title,
+          })
+        }
+      },
+    })
+  } catch (err) {
+    console.error('[Agent 服务] compactAgentContext 未处理异常:', err)
+    const errorMessage = err instanceof Error ? err.message : '未知错误'
+    if (!webContents.isDestroyed()) {
+      webContents.send(AGENT_IPC_CHANNELS.STREAM_ERROR, {
+        sessionId: input.sessionId,
+        error: errorMessage,
+      })
+      webContents.send(AGENT_IPC_CHANNELS.STREAM_COMPLETE, {
+        sessionId: input.sessionId,
+        messages: [],
+        stoppedByUser: false,
+      })
+    }
+  } finally {
     if (!orchestrator.isActive(input.sessionId)) {
       sessionWebContents.delete(input.sessionId)
     }

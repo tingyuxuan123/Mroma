@@ -6,7 +6,7 @@
  * 未来可扩展：PiAgentAdapter 等。
  */
 
-import type { SDKMessage } from './agent'
+import type { AgentCompactReason, SDKMessage } from './agent'
 
 /** SDK 用户消息（队列消息注入用，匹配 SDK SDKUserMessage 结构） */
 export interface SDKUserMessageInput {
@@ -37,6 +37,14 @@ export interface AgentQueryInput {
   abortSignal?: AbortSignal
 }
 
+/** Agent 上下文压缩查询输入（Provider 可选实现） */
+export interface AgentCompactQueryInput extends AgentQueryInput {
+  /** 触发来源：手动、自动或 prompt 过长恢复动作 */
+  reason?: AgentCompactReason
+  /** 模型上下文窗口（来自渠道高级配置） */
+  contextWindow?: number
+}
+
 /**
  * Agent Provider 适配器接口
  *
@@ -46,6 +54,8 @@ export interface AgentQueryInput {
 export interface AgentProviderAdapter {
   /** 发起查询，返回 SDKMessage 异步迭代流 */
   query(input: AgentQueryInput): AsyncIterable<SDKMessage>
+  /** 托管式压缩上下文（可选；未实现时 orchestrator 回退到 /compact） */
+  compactContext?(input: AgentCompactQueryInput): AsyncIterable<SDKMessage>
   /** 中止指定会话的执行 */
   abort(sessionId: string): void
   /**

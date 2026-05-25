@@ -34,6 +34,7 @@ import type {
   AgentSessionMeta,
   SDKMessage,
   AgentSendInput,
+  AgentCompactInput,
   AgentStreamEvent,
   AgentStreamCompletePayload,
   AgentWorkspace,
@@ -443,6 +444,9 @@ export interface ElectronAPI {
 
   /** 发送 Agent 消息 */
   sendAgentMessage: (input: AgentSendInput) => Promise<void>
+
+  /** 压缩 Agent 上下文 */
+  compactAgentContext: (input: AgentCompactInput) => Promise<void>
 
   /** 中止 Agent 执行 */
   stopAgent: (sessionId: string) => Promise<void>
@@ -1392,6 +1396,10 @@ const electronAPI: ElectronAPI = {
 
   sendAgentMessage: (input: AgentSendInput) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SEND_MESSAGE, input)
+  },
+
+  compactAgentContext: (input: AgentCompactInput) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.COMPACT_CONTEXT, input)
   },
 
   stopAgent: (sessionId: string) => {

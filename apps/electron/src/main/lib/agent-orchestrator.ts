@@ -20,7 +20,7 @@ import { join, dirname } from 'node:path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { app } from 'electron'
-import type { AgentSendInput, AgentMessage, AgentGenerateTitleInput, AgentProviderAdapter, AgentSessionMeta, TypedError, RetryAttempt, SDKMessage, SDKAssistantMessage, AgentStreamPayload, RewindSessionResult, SdkBeta, ProviderType, AgentEffort } from '@mroma/shared'
+import type { AgentSendInput, AgentCompactInput, AgentMessage, AgentGenerateTitleInput, AgentProviderAdapter, AgentSessionMeta, TypedError, RetryAttempt, SDKMessage, SDKAssistantMessage, SDKResultMessage, SDKSystemMessage, AgentStreamPayload, RewindSessionResult, SdkBeta, ProviderType, AgentEffort } from '@mroma/shared'
 import {
   MROMA_DEFAULT_PERMISSION_MODE,
   MROMA_PERMISSION_MODE_CONFIG,
@@ -54,6 +54,7 @@ import { searchMemory, addMemory, formatSearchResult } from './memos-client'
 import { validateToolInput } from './agent-tool-input-validator'
 import { estimateTokenCount, WRITE_CONTENT_TOKEN_THRESHOLD } from './agent-tool-token-estimator'
 import { getToolState } from './chat-tool-config'
+import { buildManagedCompactSummary, getMessagesAfterLatestCompactBoundary } from './agent-managed-compact'
 
 // ===== 类型定义 =====
 
@@ -302,7 +303,8 @@ function buildContextPrompt(sessionId: string, currentUserMessage: string, sessi
   const history = allMessages.slice(0, -1)
   if (history.length === 0) return currentUserMessage
 
-  const recent = history.slice(-MAX_CONTEXT_MESSAGES)
+  const compactScope = getMessagesAfterLatestCompactBoundary(history)
+  const recent = compactScope.messages.slice(-MAX_CONTEXT_MESSAGES)
   const lines = recent
     .filter((m) => (m.type === 'user' || m.type === 'assistant'))
     .map((m) => {
@@ -328,15 +330,18 @@ function buildContextPrompt(sessionId: string, currentUserMessage: string, sessi
     })
     .filter(Boolean)
 
-  if (lines.length === 0) return currentUserMessage
+  if (lines.length === 0 && !compactScope.summary) return currentUserMessage
 
   // 注入 session 元信息，便于 Agent 在需要时读取完整历史
   const sessionInfoBlock = sessionHint
     ? `\n<session_info>\nSession ID: ${sessionId}\nSession CWD: ${sessionHint.agentCwd}\nNote: 上方为近期对话摘要。如需更多上下文，可读取 ~/${getConfigDirName()}/agent-sessions/${sessionId}.jsonl 获取完整历史。\n</session_info>\n`
     : ''
+  const compactSummaryBlock = compactScope.summary
+    ? `\n<managed_compact_summary>\n${compactScope.summary}\n</managed_compact_summary>\n`
+    : ''
 
-  console.log(`[Agent 编排] buildContextPrompt: 读取 ${allMessages.length} 条消息，注入 ${lines.length} 条历史${sessionHint ? '（含 session 元信息）' : ''}`)
-  return `<conversation_history>${sessionInfoBlock}\n${lines.join('\n')}\n</conversation_history>\n\n${currentUserMessage}`
+  console.log(`[Agent 编排] buildContextPrompt: 读取 ${allMessages.length} 条消息，注入 ${lines.length} 条历史${compactScope.summary ? '（含托管压缩摘要）' : ''}${sessionHint ? '（含 session 元信息）' : ''}`)
+  return `<conversation_history>${sessionInfoBlock}${compactSummaryBlock}\n${lines.join('\n')}\n</conversation_history>\n\n${currentUserMessage}`
 }
 
 /**
@@ -970,6 +975,115 @@ export class AgentOrchestrator {
     })
 
     appendSDKMessages(sessionId, withTimestamps)
+  }
+
+  /**
+   * 语义化上下文压缩入口。
+   *
+   * Claude 仍回退到原生 /compact；Codex 走 Mroma 托管式压缩：生成摘要、写入压缩边界、
+   * 清空 sdkSessionId，让下一轮创建新 Codex thread 并通过 buildContextPrompt 注入摘要。
+   */
+  async compactContext(input: AgentCompactInput, callbacks: SessionCallbacks): Promise<void> {
+    const fallbackInput: AgentSendInput = { ...input, userMessage: '/compact' }
+    const channel = getChannelById(input.channelId)
+    if (!channel || channel.provider !== 'openai-responses' || input.mode === 'fallback_prompt') {
+      await this.sendMessage(fallbackInput, callbacks)
+      return
+    }
+
+    const { sessionId, modelId } = input
+    if (this.activeSessions.has(sessionId)) {
+      console.warn(`[Agent 编排] 会话 ${sessionId} 正在处理中，拒绝压缩请求`)
+      callbacks.onError('上一条消息仍在处理中，请稍候再试')
+      callbacks.onComplete([], { startedAt: input.startedAt, resultSubtype: 'error_during_execution' })
+      return
+    }
+
+    const runGeneration = Date.now()
+    const streamStartedAt = input.startedAt ?? runGeneration
+    const compactStartedAt = Date.now()
+    this.activeSessions.set(sessionId, runGeneration)
+
+    const reason = input.reason ?? 'manual'
+    const sessionMeta = getAgentSessionMeta(sessionId)
+    const modelAdvancedConfig = channel.models?.find((model) => model.id === modelId)?.advancedConfig
+    const contextWindow = modelAdvancedConfig?.contextTokenLimit
+    const accumulatedMessages: SDKMessage[] = []
+
+    try {
+      try { updateAgentSessionMeta(sessionId, { stoppedByUser: false }) } catch { /* 会话可能已删除 */ }
+
+      const compactingMessage: SDKSystemMessage = {
+        type: 'system',
+        subtype: 'compacting',
+        session_id: sessionId,
+        status: 'running',
+        message: '正在压缩 Codex 上下文',
+        metadata: { backend: 'codex', transient: true, sourceEvent: 'managed_compact' },
+      }
+      accumulatedMessages.push(compactingMessage)
+      this.eventBus.emit(sessionId, { kind: 'sdk_message', message: compactingMessage })
+
+      const history = getAgentSessionSDKMessages(sessionId)
+      const summary = buildManagedCompactSummary(history)
+      const compactedAt = new Date().toISOString()
+
+      const boundaryMessage: SDKSystemMessage = {
+        type: 'system',
+        subtype: 'compact_boundary',
+        session_id: sessionId,
+        status: 'completed',
+        summary,
+        reason,
+        compacted_at: compactedAt,
+        old_sdk_session_id: sessionMeta?.sdkSessionId,
+        message: 'Codex 上下文已压缩，下一轮将启动新的 Codex thread 并注入摘要。',
+        metadata: { backend: 'codex', sourceEvent: 'managed_compact' },
+      }
+      accumulatedMessages.push(boundaryMessage)
+      this.eventBus.emit(sessionId, { kind: 'sdk_message', message: boundaryMessage })
+
+      // 重置 Codex thread：下一轮 sendMessage 不再 resume 旧 thread，而是带摘要启动新 thread。
+      updateAgentSessionMeta(sessionId, { sdkSessionId: undefined, stoppedByUser: false })
+
+      const resultMessage: SDKResultMessage = {
+        type: 'result',
+        subtype: 'success',
+        usage: { input_tokens: 0, output_tokens: 0 },
+        contextUsage: {
+          backend: 'codex',
+          source: 'estimated',
+          scope: 'active_context',
+          inputTokens: 0,
+          estimatedActiveTokens: 0,
+          ...(contextWindow && { contextWindow }),
+          ...(modelId && { model: modelId }),
+          updatedAt: compactedAt,
+        },
+        session_id: sessionId,
+        metadata: { backend: 'codex', sourceEvent: 'managed_compact' },
+      }
+      accumulatedMessages.push(resultMessage)
+      this.eventBus.emit(sessionId, { kind: 'sdk_message', message: resultMessage })
+
+      this.persistSDKMessages(sessionId, accumulatedMessages, Date.now() - compactStartedAt)
+      callbacks.onComplete(getAgentSessionMessages(sessionId), {
+        startedAt: streamStartedAt,
+        resultSubtype: 'success',
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error('[Agent 编排] Codex 托管式压缩失败:', error)
+      callbacks.onError(`压缩上下文失败：${message}`)
+      callbacks.onComplete([], {
+        startedAt: streamStartedAt,
+        resultSubtype: 'error_during_execution',
+      })
+    } finally {
+      if (this.activeSessions.get(sessionId) === runGeneration) {
+        this.activeSessions.delete(sessionId)
+      }
+    }
   }
 
   /**

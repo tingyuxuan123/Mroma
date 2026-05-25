@@ -1552,13 +1552,14 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       return map
     })
 
-    window.electronAPI.sendAgentMessage({
+    window.electronAPI.compactAgentContext({
       sessionId,
-      userMessage: '/compact',
       channelId: agentChannelId,
       modelId: agentModelId || undefined,
       workspaceId: currentWorkspaceId || undefined,
       startedAt: streamStartedAt,
+      reason: 'manual',
+      mode: isCodexChannel ? 'managed' : 'fallback_prompt',
       permissionModeOverride: permissionMode,
       ...(isCodexChannel && { agentEffort: effectiveAgentEffort, agentFastMode: effectiveCodexFastMode }),
     }).catch((error) => {

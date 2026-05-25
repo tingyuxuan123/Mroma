@@ -482,13 +482,14 @@ export function useGlobalAgentListeners(): void {
       })
 
       const permissionMode = store.get(agentPermissionModeMapAtom).get(sessionId) ?? session?.permissionMode
-      window.electronAPI.sendAgentMessage({
+      window.electronAPI.compactAgentContext({
         sessionId,
-        userMessage: '/compact',
         channelId,
         modelId,
         workspaceId: session?.workspaceId,
         startedAt: streamStartedAt,
+        reason: 'auto',
+        mode: channel?.provider === 'openai-responses' ? 'managed' : 'fallback_prompt',
         ...(permissionMode && { permissionModeOverride: permissionMode }),
         ...(channel?.provider === 'openai-responses' && {
           agentEffort: modelConfig?.reasoningEffort ?? store.get(agentEffortAtom) ?? 'high',

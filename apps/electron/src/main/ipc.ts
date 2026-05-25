@@ -43,6 +43,7 @@ import type {
   RecentMessagesResult,
   AgentSessionMeta,
   AgentSendInput,
+  AgentCompactInput,
   AgentWorkspace,
   AgentGenerateTitleInput,
   AgentSaveFilesInput,
@@ -169,7 +170,7 @@ import {
   searchAgentSessionMessages,
   searchAgentSessionReferences,
 } from './lib/agent-session-manager'
-import { runAgent, stopAgent, generateAgentTitle, saveFilesToAgentSession, saveFilesToWorkspaceFiles, isAgentSessionActive, queueAgentMessage, updateAgentPermissionMode, rewindAgentSession } from './lib/agent-service'
+import { runAgent, compactAgentContext, stopAgent, generateAgentTitle, saveFilesToAgentSession, saveFilesToWorkspaceFiles, isAgentSessionActive, queueAgentMessage, updateAgentPermissionMode, rewindAgentSession } from './lib/agent-service'
 import { permissionService } from './lib/agent-permission-service'
 import { askUserService } from './lib/agent-ask-user-service'
 import { exitPlanService } from './lib/agent-exit-plan-service'
@@ -1578,6 +1579,14 @@ export function registerIpcHandlers(): void {
     AGENT_IPC_CHANNELS.SEND_MESSAGE,
     async (event, input: AgentSendInput): Promise<void> => {
       await runAgent(input, event.sender)
+    }
+  )
+
+  // 压缩 Agent 上下文（语义化入口）
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.COMPACT_CONTEXT,
+    async (event, input: AgentCompactInput): Promise<void> => {
+      await compactAgentContext(input, event.sender)
     }
   )
 

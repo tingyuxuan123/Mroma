@@ -858,6 +858,17 @@ export interface AgentSendInput {
   startedAt?: number
 }
 
+/** Agent 上下文压缩触发原因 */
+export type AgentCompactReason = 'manual' | 'auto' | 'prompt_too_long'
+
+/** Agent 上下文压缩输入（语义化入口，避免把 /compact 当成普通用户消息） */
+export interface AgentCompactInput extends Omit<AgentSendInput, 'userMessage'> {
+  /** 触发来源：手动、自动或 prompt 过长恢复动作 */
+  reason?: AgentCompactReason
+  /** managed 优先走后端托管式压缩；fallback_prompt 保持旧的 /compact 兼容行为 */
+  mode?: 'managed' | 'fallback_prompt'
+}
+
 // ===== Agent 队列消息 =====
 
 /** 流式追加消息的输入参数（Agent 流式中发送新消息） */
@@ -1308,6 +1319,8 @@ export const AGENT_IPC_CHANNELS = {
   // 消息发送
   /** 发送消息（触发 Agent 流式响应） */
   SEND_MESSAGE: 'agent:send-message',
+  /** 压缩 Agent 上下文（语义化入口，后端可选择托管式压缩或兼容 /compact） */
+  COMPACT_CONTEXT: 'agent:compact-context',
   /** 中止 Agent 执行 */
   STOP_AGENT: 'agent:stop',
 

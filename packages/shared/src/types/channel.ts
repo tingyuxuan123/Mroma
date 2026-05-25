@@ -5,6 +5,8 @@
  * API Key 使用 Electron safeStorage 加密后存储在本地配置文件中。
  */
 
+import type { AgentEffort } from './agent'
+
 /**
  * 支持的 AI 供应商类型
  */
@@ -115,6 +117,10 @@ export interface ModelAdvancedConfig {
   supportsImage?: boolean
   /** 是否支持 fast 模式（部分模型有快速推理变体） */
   supportsFast?: boolean
+  /** 是否默认启用 Codex Fast 模式 */
+  fastMode?: boolean
+  /** 默认思考深度（Agent 模式） */
+  reasoningEffort?: AgentEffort
   /** 是否开启扩展上下文（如 1M context） */
   enableExtendedContext?: boolean
 }

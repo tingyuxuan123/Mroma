@@ -411,6 +411,8 @@ interface DynamicContext {
   workspaceName?: string
   workspaceSlug?: string
   agentCwd?: string
+  /** 当前 Agent 可访问的工作目录（workspace-files、附加目录等） */
+  accessibleDirectories?: string[]
 }
 
 /**
@@ -485,6 +487,16 @@ export function buildDynamicContext(ctx: DynamicContext): string {
     if (wsLines.length > 0) {
       sections.push(`<workspace_state>\n${wsLines.join('\n')}\n</workspace_state>`)
     }
+  }
+
+  if (ctx.accessibleDirectories && ctx.accessibleDirectories.length > 0) {
+    const uniqueDirs = [...new Set(ctx.accessibleDirectories)]
+    sections.push([
+      '<accessible_directories>',
+      '当前 Agent 可以读取并操作以下目录。查找项目源码或用户提到的工作区文件时，优先在这些目录中使用绝对路径搜索：',
+      ...uniqueDirs.map((dir) => `- ${dir}`),
+      '</accessible_directories>',
+    ].join('\n'))
   }
 
   // 工作目录

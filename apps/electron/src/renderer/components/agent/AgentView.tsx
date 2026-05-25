@@ -37,6 +37,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -62,6 +69,7 @@ import {
   currentAgentWorkspaceIdAtom,
   agentPendingPromptAtom,
   agentPendingFilesAtom,
+  agentEffortAtom,
   agentWorkspacesAtom,
   agentStreamErrorsAtom,
   agentSessionDraftsAtom,
@@ -95,13 +103,20 @@ import { useOpenSession } from '@/hooks/useOpenSession'
 import { AgentSessionProvider } from '@/contexts/session-context'
 import { draftSessionIdsAtom } from '@/atoms/draft-session-atoms'
 import { sendWithCmdEnterAtom } from '@/atoms/shortcut-atoms'
-import type { AgentSendInput, AgentPendingFile, FileDialogLargeFile, ModelOption, SDKMessage } from '@mroma/shared'
+import type { AgentSendInput, AgentPendingFile, FileDialogLargeFile, ModelOption, SDKMessage, AgentEffort } from '@mroma/shared'
 import { MAX_ATTACHMENT_SIZE, isAgentCompatibleProvider } from '@mroma/shared'
 import { fileToBase64, formatFileNames, getFileParentPath } from '@/lib/file-utils'
 
 /** 稳定的空 SDKMessage 数组引用，避免 ?? [] 每次创建新引用 */
 const EMPTY_SDK_MESSAGES: SDKMessage[] = []
 const LONG_TEXT_ATTACHMENT_THRESHOLD = 2000
+const AGENT_EFFORT_OPTIONS: Array<{ value: AgentEffort; label: string }> = [
+  { value: 'minimal', label: 'Minimal' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+  { value: 'max', label: 'Max' },
+]
 
 function formatClipboardTimestamp(date = new Date()): string {
   const pad = (value: number): string => String(value).padStart(2, '0')
@@ -163,10 +178,13 @@ function getUserTextFromSDKMessage(message: SDKMessage): string | null {
 
 interface AgentThinkingPopoverProps {
   agentThinking: import('@mroma/shared').ThinkingConfig | undefined
+  effort: AgentEffort
+  showEffortSelector: boolean
   onToggle: () => void
+  onEffortChange: (effort: AgentEffort) => void
 }
 
-function AgentThinkingPopover({ agentThinking, onToggle }: AgentThinkingPopoverProps): React.ReactElement {
+function AgentThinkingPopover({ agentThinking, effort, showEffortSelector, onToggle, onEffortChange }: AgentThinkingPopoverProps): React.ReactElement {
   const [thinkingExpanded, setThinkingExpanded] = useAtom(thinkingExpandedAtom)
   const [open, setOpen] = React.useState(false)
   const hoverTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -210,7 +228,7 @@ function AgentThinkingPopover({ agentThinking, onToggle }: AgentThinkingPopoverP
         side="top"
         align="center"
         sideOffset={8}
-        className="w-auto min-w-[160px] p-2 px-2.5"
+        className="w-auto min-w-[180px] p-2 px-2.5"
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onOpenAutoFocus={(e) => e.preventDefault()}
@@ -225,6 +243,26 @@ function AgentThinkingPopover({ agentThinking, onToggle }: AgentThinkingPopoverP
             />
           </div>
           <div className="h-px bg-border" />
+          {showEffortSelector && (
+            <>
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-xs text-foreground/70">思考深度</span>
+                <Select value={effort} onValueChange={(value) => onEffortChange(value as AgentEffort)}>
+                  <SelectTrigger className="h-7 w-[96px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {AGENT_EFFORT_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="h-px bg-border" />
+            </>
+          )}
           <div className="flex items-center justify-between gap-4">
             <span className="text-xs text-foreground/70">展开思考</span>
             <Switch
@@ -325,6 +363,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
   const setSessionModelMap = useSetAtom(agentSessionModelMapAtom)
   const [defaultChannelId, setDefaultChannelId] = useAtom(agentChannelIdAtom)
   const [defaultModelId, setDefaultModelId] = useAtom(agentModelIdAtom)
+  const [agentEffort, setAgentEffort] = useAtom(agentEffortAtom)
   const agentChannelId = sessionChannelMap.get(sessionId) ?? defaultChannelId
   const agentModelId = sessionModelMap.get(sessionId) ?? defaultModelId
   const agentChannelIds = useAtomValue(agentChannelIdsAtom)
@@ -377,6 +416,20 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     const channel = globalChannels.find((c) => c.id === agentChannelId)
     return channel?.models.find((m) => m.id === agentModelId)?.advancedConfig?.contextTokenLimit
   }, [globalChannels, agentChannelId, agentModelId])
+
+  const selectedChannel = React.useMemo(() => {
+    if (!agentChannelId) return undefined
+    return globalChannels.find((c) => c.id === agentChannelId)
+  }, [globalChannels, agentChannelId])
+
+  const selectedModelAdvancedConfig = React.useMemo(() => {
+    if (!selectedChannel || !agentModelId) return undefined
+    return selectedChannel.models.find((m) => m.id === agentModelId)?.advancedConfig
+  }, [selectedChannel, agentModelId])
+
+  const isCodexChannel = selectedChannel?.provider === 'openai-responses'
+  const effectiveAgentEffort = agentEffort ?? selectedModelAdvancedConfig?.reasoningEffort ?? 'high'
+  const effectiveCodexFastMode = selectedModelAdvancedConfig?.fastMode ?? selectedModelAdvancedConfig?.supportsFast
 
   const contextStatus: AgentContextStatus = {
     isCompacting: streamState?.isCompacting ?? false,
@@ -775,6 +828,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         workspaceId: snapshot.workspaceId,
         startedAt: streamStartedAt,
         permissionModeOverride: permissionMode,
+        ...(isCodexChannel && { agentEffort: effectiveAgentEffort, agentFastMode: effectiveCodexFastMode }),
         ...(snapshot.additionalDirectories && snapshot.additionalDirectories.length > 0 && {
           additionalDirectories: snapshot.additionalDirectories,
         }),
@@ -790,7 +844,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         })
       })
     })
-  }, [messagesLoaded, pendingPrompt, sessionId, agentChannelId, agentModelId, currentWorkspaceId, streaming, setPendingPrompt, setStreamingStates, permissionMode, attachedDirs, attachedFileDirectories])
+  }, [messagesLoaded, pendingPrompt, sessionId, agentChannelId, agentModelId, currentWorkspaceId, streaming, setPendingPrompt, setStreamingStates, permissionMode, attachedDirs, attachedFileDirectories, isCodexChannel, effectiveAgentEffort, effectiveCodexFastMode])
   // ===== 附件处理 =====
 
   /** 为文件生成唯一文件名（避免粘贴多张图片时文件名重复导致覆盖） */
@@ -1407,6 +1461,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       workspaceId: currentWorkspaceId || undefined,
       startedAt: streamStartedAt,
       permissionModeOverride: permissionMode,
+      ...(isCodexChannel && { agentEffort: effectiveAgentEffort, agentFastMode: effectiveCodexFastMode }),
       ...(additionalDirectoriesForRun.size > 0 && { additionalDirectories: Array.from(additionalDirectoriesForRun) }),
       // 解析用户消息中的 Skill/MCP/会话引用，传递结构化元数据给后端
       ...(() => {
@@ -1434,7 +1489,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         return map
       })
     })
-  }, [inputContent, pendingFiles, attachedDirs, attachedFileDirectories, sessionId, agentChannelId, agentModelId, currentWorkspaceId, workspaces, streaming, suggestion, hasAvailableModel, store, setStreamingStates, setPendingFiles, setAgentStreamErrors, setPromptSuggestions, setInputContent, setLiveMessagesMap, permissionMode])
+  }, [inputContent, pendingFiles, attachedDirs, attachedFileDirectories, sessionId, agentChannelId, agentModelId, currentWorkspaceId, workspaces, streaming, suggestion, hasAvailableModel, store, setStreamingStates, setPendingFiles, setAgentStreamErrors, setPromptSuggestions, setInputContent, setLiveMessagesMap, permissionMode, isCodexChannel, effectiveAgentEffort, effectiveCodexFastMode])
 
   /** 停止生成 */
   const handleStop = React.useCallback((): void => {
@@ -1500,6 +1555,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       workspaceId: currentWorkspaceId || undefined,
       startedAt: streamStartedAt,
       permissionModeOverride: permissionMode,
+      ...(isCodexChannel && { agentEffort: effectiveAgentEffort, agentFastMode: effectiveCodexFastMode }),
     }).catch((error) => {
       console.error('[AgentView] /compact 发送失败:', error)
       // 回滚：移除合成用户消息 + 清除 isCompacting flag
@@ -1519,7 +1575,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         return map
       })
     })
-  }, [sessionId, agentChannelId, agentModelId, currentWorkspaceId, streaming, setStreamingStates, store, permissionMode])
+  }, [sessionId, agentChannelId, agentModelId, currentWorkspaceId, streaming, setStreamingStates, store, permissionMode, isCodexChannel, effectiveAgentEffort, effectiveCodexFastMode])
 
   /** 复制错误信息到剪贴板 */
   const handleCopyError = React.useCallback(async (): Promise<void> => {
@@ -1578,8 +1634,9 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       workspaceId: currentWorkspaceId || undefined,
       startedAt: streamStartedAt,
       permissionModeOverride: permissionMode,
+      ...(isCodexChannel && { agentEffort: effectiveAgentEffort, agentFastMode: effectiveCodexFastMode }),
     }).catch(console.error)
-  }, [persistedSDKMessages, sessionId, agentChannelId, agentModelId, currentWorkspaceId, streaming, setAgentStreamErrors, setStreamingStates, permissionMode])
+  }, [persistedSDKMessages, sessionId, agentChannelId, agentModelId, currentWorkspaceId, streaming, setAgentStreamErrors, setStreamingStates, permissionMode, isCodexChannel, effectiveAgentEffort, effectiveCodexFastMode])
 
   /** 在新对话继续：创建新会话 + 切换 tab + 使用 &session 引用旧会话 */
   const handleRetryInNewSession = React.useCallback(async (): Promise<void> => {
@@ -1620,11 +1677,12 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         mentionedSessionIds: [sessionId],
         startedAt: streamStartedAt,
         permissionModeOverride: permissionMode,
+        ...(isCodexChannel && { agentEffort: effectiveAgentEffort, agentFastMode: effectiveCodexFastMode }),
       }).catch(console.error)
     } catch (error) {
       console.error('[AgentView] 在新会话中重试失败:', error)
     }
-  }, [sessionId, agentChannelId, agentModelId, currentWorkspaceId, openSession, setAgentSessions, setStreamingStates, permissionMode])
+  }, [sessionId, agentChannelId, agentModelId, currentWorkspaceId, openSession, setAgentSessions, setStreamingStates, permissionMode, isCodexChannel, effectiveAgentEffort, effectiveCodexFastMode])
 
   /** 分叉会话：从指定消息处创建新会话并自动切换 */
   const handleFork = React.useCallback(async (upToMessageUuid: string): Promise<void> => {
@@ -1768,12 +1826,18 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       node: (
         <AgentThinkingPopover
           agentThinking={agentThinking}
+          effort={effectiveAgentEffort}
+          showEffortSelector={isCodexChannel}
           onToggle={() => {
             const next = agentThinking?.type === 'adaptive'
               ? { type: 'disabled' as const }
               : { type: 'adaptive' as const }
             setAgentThinking(next)
             window.electronAPI.updateSettings({ agentThinking: next })
+          }}
+          onEffortChange={(nextEffort) => {
+            setAgentEffort(nextEffort)
+            window.electronAPI.updateSettings({ agentEffort: nextEffort })
           }}
         />
       ),
@@ -1852,6 +1916,9 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     sessionId,
     agentThinking,
     setAgentThinking,
+    effectiveAgentEffort,
+    isCodexChannel,
+    setAgentEffort,
     handleOpenFileDialog,
     handleAttachFolder,
     contextStatus.inputTokens,

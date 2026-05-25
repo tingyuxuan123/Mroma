@@ -65,12 +65,13 @@ export type ThinkingConfig =
  * 推理深度等级
  *
  * 与 adaptive thinking 配合使用，引导思考深度：
+ * - minimal: 最小思考（Codex 支持）
  * - low: 最少思考，最快响应
  * - medium: 适度思考
  * - high: 深度推理（默认）
  * - max: 最大深度（仅 Opus 4.6）
  */
-export type AgentEffort = 'low' | 'medium' | 'high' | 'max'
+export type AgentEffort = 'minimal' | 'low' | 'medium' | 'high' | 'max'
 
 /**
  * 自定义子代理定义
@@ -790,6 +791,12 @@ export interface AgentSendInput {
   workspaceId?: string
   /** 附加的外部目录（绝对路径，传递给 SDK additionalDirectories） */
   additionalDirectories?: string[]
+  /** 结构化 JSON 输出格式（可选，传递给支持的 Agent Provider） */
+  outputFormat?: JsonSchemaOutputFormat
+  /** 本次 Agent 请求的思考深度覆盖值 */
+  agentEffort?: AgentEffort
+  /** 本次 Agent 请求是否启用 Codex Fast 模式 */
+  agentFastMode?: boolean
   /** 动态注入的 MCP 服务器（仅在本次会话中生效，如飞书群聊工具） */
   customMcpServers?: Record<string, Record<string, unknown>>
   /** 强制覆盖权限模式（飞书等无 UI 交互场景下强制 'bypassPermissions'） */

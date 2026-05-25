@@ -54,6 +54,9 @@ function getSDKMessageStableKey(message: SDKMessage): string {
   if (typeof record.uuid === 'string' && record.uuid.length > 0) {
     return `${message.type}:uuid:${record.uuid}`
   }
+  if (typeof record._codexStreamingKey === 'string' && record._codexStreamingKey.length > 0) {
+    return `${message.type}:codex:${record._codexStreamingKey}`
+  }
 
   // 已缓存的消息对象直接返回，保证跨渲染稳定
   if (stableKeyCache.has(message)) {

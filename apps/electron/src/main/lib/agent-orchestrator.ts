@@ -20,7 +20,7 @@ import { join, dirname } from 'node:path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { app } from 'electron'
-import type { AgentSendInput, AgentMessage, AgentGenerateTitleInput, AgentProviderAdapter, AgentSessionMeta, TypedError, RetryAttempt, SDKMessage, SDKAssistantMessage, AgentStreamPayload, RewindSessionResult, SdkBeta, ProviderType } from '@mroma/shared'
+import type { AgentSendInput, AgentMessage, AgentGenerateTitleInput, AgentProviderAdapter, AgentSessionMeta, TypedError, RetryAttempt, SDKMessage, SDKAssistantMessage, AgentStreamPayload, RewindSessionResult, SdkBeta, ProviderType, AgentEffort } from '@mroma/shared'
 import {
   MROMA_DEFAULT_PERMISSION_MODE,
   MROMA_PERMISSION_MODE_CONFIG,
@@ -53,6 +53,7 @@ import { getMemoryConfig } from './memory-service'
 import { searchMemory, addMemory, formatSearchResult } from './memos-client'
 import { validateToolInput } from './agent-tool-input-validator'
 import { estimateTokenCount, WRITE_CONTENT_TOKEN_THRESHOLD } from './agent-tool-token-estimator'
+import { getToolState } from './chat-tool-config'
 
 // ===== 类型定义 =====
 
@@ -418,6 +419,36 @@ const DEFAULT_SESSION_TITLE = '新 Agent 会话'
 
 /** 默认模型 ID */
 const DEFAULT_MODEL_ID = 'claude-sonnet-4-6'
+
+function stripCodexStreamingMetadata(message: SDKMessage): SDKMessage {
+  const record = message as Record<string, unknown>
+  if (!('_codexStreamingKey' in record) && !('_codexTransient' in record)) {
+    return message
+  }
+
+  const cleanRecord = { ...record }
+  delete cleanRecord._codexStreamingKey
+  delete cleanRecord._codexTransient
+  return cleanRecord as unknown as SDKMessage
+}
+
+function resolveAgentEffort(
+  inputEffort: AgentEffort | undefined,
+  modelConfig: { reasoningEffort?: AgentEffort } | undefined,
+  settingsEffort: AgentEffort | undefined,
+): AgentEffort {
+  return inputEffort
+    ?? modelConfig?.reasoningEffort
+    ?? settingsEffort
+    ?? 'high'
+}
+
+function resolveCodexFastMode(
+  inputFastMode: boolean | undefined,
+  modelConfig: { fastMode?: boolean; supportsFast?: boolean } | undefined,
+): boolean | undefined {
+  return inputFastMode ?? modelConfig?.fastMode ?? modelConfig?.supportsFast
+}
 
 /**
  * 判断模型是否支持 1M context window beta（context-1m-2025-08-07）
@@ -901,10 +932,11 @@ export class AgentOrchestrator {
   ): void {
     if (accumulatedMessages.length === 0) return
 
-    const toPersist = accumulatedMessages.filter(
-      (m) => m.type === 'assistant' || m.type === 'user' || m.type === 'result'
+    const toPersist = accumulatedMessages.filter((m) => {
+      if ((m as Record<string, unknown>)._codexTransient) return false
+      return m.type === 'assistant' || m.type === 'user' || m.type === 'result'
         || (m.type === 'system' && ['compact_boundary', 'permission_denied'].includes((m as import('@mroma/shared').SDKSystemMessage).subtype ?? ''))
-    ).filter((m) => {
+    }).filter((m) => {
       // 过滤 SDK 内部生成的 user 文本消息（如 Skill 展开 prompt），与实时流过滤逻辑一致
       if (m.type === 'user') {
         const content = (m as { message?: { content?: Array<{ type: string }> } }).message?.content
@@ -918,7 +950,7 @@ export class AgentOrchestrator {
 
     // 为没有 _createdAt 的消息补上时间戳（assistant 消息来自 SDK 原始输出，不含时间）
     const now = Date.now()
-    const withTimestamps = toPersist.map((m) => {
+    const withTimestamps = toPersist.map(stripCodexStreamingMetadata).map((m) => {
       const msg = m as Record<string, unknown>
       if (typeof msg._createdAt === 'number') return m
       // 为 result 消息附加 _durationMs
@@ -938,7 +970,22 @@ export class AgentOrchestrator {
    * 通过 EventBus 分发 AgentEvent，通过 callbacks 发送控制信号。
    */
   async sendMessage(input: AgentSendInput, callbacks: SessionCallbacks): Promise<void> {
-    const { sessionId, userMessage, channelId, modelId, workspaceId, additionalDirectories, customMcpServers, permissionModeOverride, mentionedSkills, mentionedMcpServers, mentionedSessionIds } = input
+    const {
+      sessionId,
+      userMessage,
+      channelId,
+      modelId,
+      workspaceId,
+      additionalDirectories,
+      outputFormat,
+      agentEffort,
+      agentFastMode,
+      customMcpServers,
+      permissionModeOverride,
+      mentionedSkills,
+      mentionedMcpServers,
+      mentionedSessionIds,
+    } = input
     const stderrChunks: string[] = []
 
     // 0. 并发保护
@@ -1076,6 +1123,9 @@ export class AgentOrchestrator {
 
     // 查找当前 modelId 对应的 advancedConfig（用户在 ChannelForm 里配置的高级参数）
     const modelAdvancedConfig = channel.models?.find((m) => m.id === modelId)?.advancedConfig
+    const appSettings = getSettings()
+    const resolvedAgentEffort = resolveAgentEffort(agentEffort, modelAdvancedConfig, appSettings.agentEffort)
+    const resolvedCodexFastMode = resolveCodexFastMode(agentFastMode, modelAdvancedConfig)
     const sdkEnv = await this.buildSdkEnv(apiKey, channel.baseUrl, channel.provider, modelAdvancedConfig?.maxOutputTokens)
 
     // 4. 读取已有的 SDK session ID（用于 resume）
@@ -1235,11 +1285,18 @@ export class AgentOrchestrator {
         }
       }
 
+      const accessibleDirectories = collectAttachedDirectories({
+        extraDirs: additionalDirectories,
+        sessionMeta,
+        workspaceSlug,
+      })
+
       // 11. 构建动态上下文和最终 prompt
       const dynamicCtx = buildDynamicContext({
         workspaceName: workspace?.name,
         workspaceSlug,
         agentCwd,
+        accessibleDirectories,
       })
 
       // 11.5 注入 mention 引用指令（Skill/MCP/会话）— 仅影响 prompt，不影响持久化
@@ -1281,7 +1338,6 @@ export class AgentOrchestrator {
 
       // 12. 读取应用设置并确定权限模式
       // 权限模式只属于当前 session；新会话默认完全自动模式。
-      const appSettings = getSettings()
       const initialPermissionMode: MromaPermissionMode = permissionModeOverride
         ?? MROMA_DEFAULT_PERMISSION_MODE
       // 注册到 Map，支持运行中动态切换
@@ -1517,19 +1573,18 @@ export class AgentOrchestrator {
         ...(Object.keys(mcpServers).length > 0 && { mcpServers }),
         ...(workspaceSlug && { plugins: [{ type: 'local' as const, path: getAgentWorkspacePath(workspaceSlug) }] }),
         // 合并附加目录：用户当次输入 + 会话级 + 工作区级（详见 collectAttachedDirectories）
-        ...(() => {
-          const allDirs = collectAttachedDirectories({
-            extraDirs: additionalDirectories,
-            sessionMeta,
-            workspaceSlug,
-          })
-          return allDirs.length > 0 ? { additionalDirectories: allDirs } : {}
-        })(),
+        ...(accessibleDirectories.length > 0 ? { additionalDirectories: accessibleDirectories } : {}),
         // 启用文件检查点，支持 rewindFiles 回退
         enableFileCheckpointing: true,
         // SDK 0.2.52+ 新增选项（从 settings 读取）
         ...(appSettings.agentThinking && { thinking: appSettings.agentThinking }),
-        effort: appSettings.agentEffort ?? 'high',
+        effort: resolvedAgentEffort,
+        ...(outputFormat && { outputFormat }),
+        ...(isCodex && {
+          webSearchMode: getToolState('web-search').enabled ? 'live' : 'disabled',
+          networkAccessEnabled: initialPermissionMode === 'bypassPermissions',
+          ...(resolvedCodexFastMode != null && { fastMode: resolvedCodexFastMode }),
+        }),
         ...(appSettings.agentMaxBudgetUsd != null && appSettings.agentMaxBudgetUsd > 0 && {
           maxBudgetUsd: appSettings.agentMaxBudgetUsd,
         }),
@@ -1805,7 +1860,7 @@ export class AgentOrchestrator {
             // - 对 system 消息，仅累积 compact_boundary（上下文压缩分界线需要持久化显示）
             if (msg.type === 'assistant' || msg.type === 'user' || msg.type === 'result') {
               const msgRecord = msg as Record<string, unknown>
-              if (!msgRecord.isReplay) {
+              if (!msgRecord.isReplay && !msgRecord._codexTransient) {
                 if (msg.type === 'user') {
                   // 仅累积包含 tool_result 的 user 消息（跳过 SDK 重新发出的初始用户消息）
                   const content = (msg as { message?: { content?: Array<{ type: string }> } }).message?.content
@@ -1823,7 +1878,8 @@ export class AgentOrchestrator {
               }
             } else if (msg.type === 'system') {
               const sysMsg = msg as import('@mroma/shared').SDKSystemMessage
-              if (sysMsg.subtype === 'compact_boundary' || sysMsg.subtype === 'permission_denied') {
+              const sysRecord = msg as Record<string, unknown>
+              if (!sysRecord._codexTransient && (sysMsg.subtype === 'compact_boundary' || sysMsg.subtype === 'permission_denied')) {
                 accumulatedMessages.push(msg)
               }
             }

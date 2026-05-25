@@ -44,10 +44,17 @@ files:
   - node_modules/@anthropic-ai/claude-agent-sdk-linux-x64/**/*
   - node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/**/*
   - node_modules/@anthropic-ai/claude-agent-sdk-win32-arm64/**/*
-  # OpenAI Codex SDK 主包（ESM 包，运行时动态 import）。
-  # codex CLI binary 仍需用户全局安装（npm i -g @openai/codex），
-  # SDK 内部通过系统 PATH 解析 codex 可执行文件路径。
+  # OpenAI Codex SDK 主包 + CLI 主包与平台 binary 子包。
+  # @openai/codex-sdk 会通过 @openai/codex 解析同级平台包中的 native binary；
+  # 必须一并打入 app/node_modules/@openai/，否则打包后无法启动 Codex 后端。
   - node_modules/@openai/codex-sdk/**/*
+  - node_modules/@openai/codex/**/*
+  - node_modules/@openai/codex-darwin-arm64/**/*
+  - node_modules/@openai/codex-darwin-x64/**/*
+  - node_modules/@openai/codex-linux-arm64/**/*
+  - node_modules/@openai/codex-linux-x64/**/*
+  - node_modules/@openai/codex-win32-arm64/**/*
+  - node_modules/@openai/codex-win32-x64/**/*
   # PDF 内联预览使用本地 PDF.js 资源，避免运行时依赖 CDN。
   - node_modules/pdfjs-dist/**/*
   # 排除 workspace 包的 symlink（代码已被 esbuild/Vite 打包到 dist/ 中）

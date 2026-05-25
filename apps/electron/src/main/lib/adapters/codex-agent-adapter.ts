@@ -13,10 +13,12 @@
  *   - Homebrew:        brew install --cask codex
  *
  * MVP 范围：
- *   - 文本对话 / 命令执行 / 文件变更 / 计划更新 / 网络检索
+ *   - 文本对话 / 图片输入 / 命令执行 / 文件变更 / 计划更新 / 网络检索
+ *   - item.started / item.updated 实时活动更新
+ *   - 结构化输出 Schema 透传
  *   - 通过 CODEX_API_KEY + OPENAI_BASE_URL 接入 OpenAI 或 OpenAI 兼容端点
  *   - 三档权限通过 Codex 沙箱模式映射（read-only / workspace-write / danger-full-access）
- *   - 不实现：图片输入、structured outputSchema、SDK 级 canUseTool、queued message 注入
+ *   - 不实现：SDK 级 canUseTool、queued message 注入、app-server 长生命周期会话
  *
  * 接口策略：
  *   - 接受与 ClaudeAgentQueryOptions 完全相同形状的 query options（由 orchestrator
@@ -27,15 +29,19 @@
  *     一律忽略。
  */
 
+import { existsSync } from 'node:fs'
+import { extname } from 'node:path'
 import type {
   AgentQueryInput,
   AgentProviderAdapter,
+  AgentEffort,
   MromaPermissionMode,
   SDKMessage,
   SDKAssistantMessage,
   SDKUserMessage,
   SDKResultMessage,
   SDKSystemMessage,
+  JsonSchemaOutputFormat,
 } from '@mroma/shared'
 
 // ============================================================================
@@ -63,6 +69,18 @@ interface CodexQueryView extends AgentQueryInput {
   onStderr?: (data: string) => void
   /** 模型确认回调（Codex 没有 model 协商，直接回传传入 model） */
   onModelResolved?: (model: string) => void
+  /** 推理深度等级（映射到 Codex modelReasoningEffort） */
+  effort?: AgentEffort
+  /** 附加的外部目录（映射到 Codex --add-dir） */
+  additionalDirectories?: string[]
+  /** Codex 原生 Web Search 模式 */
+  webSearchMode?: 'disabled' | 'cached' | 'live'
+  /** workspace-write 沙箱是否允许命令联网 */
+  networkAccessEnabled?: boolean
+  /** 结构化 JSON 输出格式 */
+  outputFormat?: JsonSchemaOutputFormat
+  /** Codex Fast 模式 */
+  fastMode?: boolean
 }
 
 // ============================================================================
@@ -71,6 +89,9 @@ interface CodexQueryView extends AgentQueryInput {
 
 const activeControllers = new Map<string, AbortController>()
 const activeThreadIds = new Map<string, string>()
+
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'])
+type CodexConfigObject = NonNullable<import('@openai/codex-sdk').CodexOptions['config']>
 
 // ============================================================================
 // 权限模式映射
@@ -117,12 +138,13 @@ interface CodexEvent {
   message?: string
 }
 
-interface CodexItem {
+export interface CodexItem {
   id: string
   type: string
   status?: string
   text?: string
   command?: string
+  aggregated_output?: string
   exit_code?: number
   stdout?: string
   stderr?: string
@@ -131,14 +153,18 @@ interface CodexItem {
   diff?: string
   changes?: Array<{ path: string; kind?: string }>
   server?: string
+  tool?: string
   name?: string
   arguments?: unknown
   result?: unknown
+  error?: { message?: string }
   query?: string
   results?: unknown
   plan?: unknown
   steps?: Array<{ step: string; status?: string }>
+  items?: Array<{ text: string; completed: boolean }>
   reasoning?: string
+  message?: string
   [key: string]: unknown
 }
 
@@ -212,85 +238,186 @@ function makeUserToolResult(
   }
 }
 
+function markCodexStreamingMessage<T extends SDKMessage>(
+  message: T,
+  key: string,
+  transient: boolean,
+): T {
+  const record = message as Record<string, unknown>
+  record._codexStreamingKey = key
+  if (transient) {
+    record._codexTransient = true
+  }
+  return message
+}
+
+function stringifyCodexPayload(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (value == null) return ''
+  return JSON.stringify(value, null, 2)
+}
+
+function isImagePath(filePath: string): boolean {
+  return IMAGE_EXTENSIONS.has(extname(filePath).toLowerCase())
+}
+
+export function extractAttachedImagePaths(prompt: string): string[] {
+  const blockMatch = prompt.match(/<attached_files>\n?([\s\S]*?)\n?<\/attached_files>/)
+  if (!blockMatch) return []
+
+  const imagePaths: string[] = []
+  const lines = blockMatch[1]?.split('\n') ?? []
+  for (const line of lines) {
+    const lineMatch = line.match(/^-\s+.+?:\s+(.+)$/)
+    const filePath = lineMatch?.[1]?.trim()
+    if (!filePath || !isImagePath(filePath) || !existsSync(filePath)) continue
+    if (!imagePaths.includes(filePath)) imagePaths.push(filePath)
+  }
+  return imagePaths
+}
+
+export function mapEffortToCodex(effort: AgentEffort | undefined): 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | undefined {
+  if (!effort) return undefined
+  return effort === 'max' ? 'xhigh' : effort
+}
+
+export function buildCodexConfig(fastMode: boolean | undefined): CodexConfigObject | undefined {
+  if (!fastMode) return undefined
+  return {
+    service_tier: 'fast',
+    fast_mode: true,
+    features: { fast_mode: true },
+  }
+}
+
 /**
  * 把 Codex item.completed 中的单个 item 转换为一组伪 SDKMessage。
  *
  * 多数 item 会产出"工具调用 + 工具结果"一对消息，便于 UI 复用 Claude 路径的
  * 工具渲染组件（如 ToolActivityItem）。
  */
-function convertCodexItemToSDKMessages(item: CodexItem): SDKMessage[] {
+export function convertCodexItemToSDKMessages(
+  item: CodexItem,
+  options: { transient?: boolean; includeToolResult?: boolean } = {},
+): SDKMessage[] {
   const messages: SDKMessage[] = []
   const toolUseId = item.id
+  const transient = options.transient ?? false
+  const includeToolResult = options.includeToolResult ?? true
+  const assistantKey = `codex:${item.id}:assistant`
+  const resultKey = `codex:${item.id}:result`
+  const systemKey = `codex:${item.id}:system`
 
   switch (item.type) {
     case 'agent_message': {
-      if (item.text) messages.push(makeAssistantText(item.text))
+      if (item.text) {
+        messages.push(markCodexStreamingMessage(makeAssistantText(item.text), assistantKey, transient))
+      }
       break
     }
     case 'reasoning': {
       const text = item.reasoning || item.text || ''
-      if (text) messages.push(makeAssistantThinking(text))
+      if (text) {
+        messages.push(markCodexStreamingMessage(makeAssistantThinking(text), assistantKey, transient))
+      }
       break
     }
     case 'command_execution': {
       const command = item.command || ''
-      messages.push(makeAssistantToolUse(toolUseId, 'Bash', { command }))
-      const stdout = item.stdout || item.output || ''
+      messages.push(markCodexStreamingMessage(makeAssistantToolUse(toolUseId, 'Bash', { command }), assistantKey, transient))
+      const stdout = item.aggregated_output || item.stdout || item.output || ''
       const stderr = item.stderr || ''
       const exitCode = item.exit_code
-      const isError = (typeof exitCode === 'number' && exitCode !== 0) || (!stdout && !!stderr)
+      const isError = item.status === 'failed'
+        || (typeof exitCode === 'number' && exitCode !== 0)
+        || (!stdout && !!stderr)
       const resultParts: string[] = []
       if (stdout) resultParts.push(stdout)
       if (stderr) resultParts.push(`[stderr]\n${stderr}`)
       if (typeof exitCode === 'number') resultParts.push(`[exit_code] ${exitCode}`)
-      messages.push(makeUserToolResult(toolUseId, resultParts.join('\n\n') || '(no output)', isError))
+      if (includeToolResult) {
+        messages.push(markCodexStreamingMessage(
+          makeUserToolResult(toolUseId, resultParts.join('\n\n') || '(no output)', isError),
+          resultKey,
+          transient,
+        ))
+      }
       break
     }
     case 'file_change': {
       const changes = item.changes ?? (item.path ? [{ path: item.path, kind: 'edit' }] : [])
       const summary = changes.map((c) => `${c.kind ?? 'edit'} ${c.path}`).join('\n')
       messages.push(
-        makeAssistantToolUse(toolUseId, 'Edit', {
-          file_path: changes[0]?.path ?? '',
-          changes,
-          ...(item.diff && { diff: item.diff }),
-        }),
+        markCodexStreamingMessage(
+          makeAssistantToolUse(toolUseId, 'Edit', {
+            file_path: changes[0]?.path ?? '',
+            changes,
+            ...(item.diff && { diff: item.diff }),
+          }),
+          assistantKey,
+          transient,
+        ),
       )
-      messages.push(makeUserToolResult(toolUseId, summary || '(no changes)', false))
+      if (includeToolResult) {
+        messages.push(markCodexStreamingMessage(makeUserToolResult(toolUseId, summary || '(no changes)', false), resultKey, transient))
+      }
       break
     }
     case 'mcp_tool_call': {
-      const toolName = `${item.server ?? 'mcp'}__${item.name ?? 'tool'}`
+      const toolName = `${item.server ?? 'mcp'}__${item.tool ?? item.name ?? 'tool'}`
       const args = (item.arguments as Record<string, unknown>) ?? {}
-      messages.push(makeAssistantToolUse(toolUseId, toolName, args))
-      const resultText = typeof item.result === 'string'
-        ? item.result
-        : JSON.stringify(item.result ?? '', null, 2)
-      messages.push(makeUserToolResult(toolUseId, resultText, false))
+      messages.push(markCodexStreamingMessage(makeAssistantToolUse(toolUseId, toolName, args), assistantKey, transient))
+      const isError = item.status === 'failed' || item.error != null
+      const resultText = isError
+        ? ((item.error?.message ?? stringifyCodexPayload(item.result)) || '(tool failed)')
+        : (stringifyCodexPayload(item.result) || '(no result)')
+      if (includeToolResult) {
+        messages.push(markCodexStreamingMessage(makeUserToolResult(toolUseId, resultText, isError), resultKey, transient))
+      }
       break
     }
     case 'web_search': {
       messages.push(
-        makeAssistantToolUse(toolUseId, 'WebSearch', { query: item.query ?? '' }),
+        markCodexStreamingMessage(
+          makeAssistantToolUse(toolUseId, 'WebSearch', { query: item.query ?? '' }),
+          assistantKey,
+          transient,
+        ),
       )
       const resultText = typeof item.results === 'string'
         ? item.results
         : JSON.stringify(item.results ?? '', null, 2)
-      messages.push(makeUserToolResult(toolUseId, resultText, false))
+      if (includeToolResult) {
+        messages.push(markCodexStreamingMessage(makeUserToolResult(toolUseId, resultText, false), resultKey, transient))
+      }
       break
     }
     case 'plan_update':
     case 'todo_list': {
-      const steps = item.steps ?? []
+      const steps = item.steps ?? item.items?.map((todo) => ({
+        step: todo.text,
+        status: todo.completed ? 'completed' : 'pending',
+      })) ?? []
       messages.push(
-        makeAssistantToolUse(toolUseId, 'TaskUpdate', {
-          plan: item.plan ?? steps,
-        }),
+        markCodexStreamingMessage(
+          makeAssistantToolUse(toolUseId, 'TaskUpdate', {
+            plan: item.plan ?? item.items ?? steps,
+          }),
+          assistantKey,
+          transient,
+        ),
       )
       const planText = steps.length > 0
         ? steps.map((s) => `[${s.status ?? 'pending'}] ${s.step}`).join('\n')
         : JSON.stringify(item.plan ?? '', null, 2)
-      messages.push(makeUserToolResult(toolUseId, planText, false))
+      if (includeToolResult) {
+        messages.push(markCodexStreamingMessage(makeUserToolResult(toolUseId, planText, false), resultKey, transient))
+      }
+      break
+    }
+    case 'error': {
+      const message = typeof item.message === 'string' ? item.message : 'Codex reported a non-fatal error'
+      messages.push(markCodexStreamingMessage(makeAssistantText(message), assistantKey, transient))
       break
     }
     default: {
@@ -299,7 +426,7 @@ function convertCodexItemToSDKMessages(item: CodexItem): SDKMessage[] {
         subtype: `codex_${item.type}`,
         ...(item as unknown as Record<string, unknown>),
       }
-      messages.push(sys)
+      messages.push(markCodexStreamingMessage(sys, systemKey, transient))
       break
     }
   }
@@ -391,6 +518,12 @@ export class CodexAgentAdapter implements AgentProviderAdapter {
       onSessionId,
       onStderr,
       onModelResolved,
+      effort,
+      additionalDirectories,
+      webSearchMode,
+      networkAccessEnabled,
+      outputFormat,
+      fastMode,
     } = opts
 
     // 1. 抢占式注册 AbortController（外部 abort 需立刻生效）
@@ -425,11 +558,12 @@ export class CodexAgentAdapter implements AgentProviderAdapter {
     const permissionMode = sdkPermissionMode ?? 'auto'
     const sandboxConfig = buildCodexSandboxConfig(permissionMode)
 
-    const codexEnv: Record<string, string> = {
-      ...(process.env as Record<string, string>),
-      CODEX_API_KEY: apiKey,
-      OPENAI_API_KEY: apiKey,
+    const codexEnv: Record<string, string> = {}
+    for (const [key, value] of Object.entries(env ?? {})) {
+      if (typeof value === 'string') codexEnv[key] = value
     }
+    codexEnv.CODEX_API_KEY = apiKey
+    codexEnv.OPENAI_API_KEY = apiKey
     if (baseUrl) codexEnv.OPENAI_BASE_URL = baseUrl
 
     // 4. 构造 Codex 实例
@@ -442,10 +576,12 @@ export class CodexAgentAdapter implements AgentProviderAdapter {
     const codex = new CodexCtor({
       apiKey,
       ...(baseUrl && { baseUrl }),
+      ...(fastMode && { config: buildCodexConfig(fastMode) }),
       env: codexEnv,
     })
 
     // 5. 构造 ThreadOptions（sandbox / approval / model / cwd 都放这里）
+    const modelReasoningEffort = mapEffortToCodex(effort)
     const threadOptions: import('@openai/codex-sdk').ThreadOptions = {
       sandboxMode: sandboxConfig.sandboxMode,
       approvalPolicy: sandboxConfig.approvalPolicy,
@@ -454,6 +590,10 @@ export class CodexAgentAdapter implements AgentProviderAdapter {
       ...(cwd && { workingDirectory: cwd }),
       // Mroma 的 session 工作目录不是 git repo，必须跳过强制检查
       skipGitRepoCheck: true,
+      ...(modelReasoningEffort && { modelReasoningEffort }),
+      ...(additionalDirectories && additionalDirectories.length > 0 && { additionalDirectories }),
+      ...(webSearchMode && { webSearchMode }),
+      ...(networkAccessEnabled != null && { networkAccessEnabled }),
     }
 
     // 6. startThread / resumeThread
@@ -466,6 +606,13 @@ export class CodexAgentAdapter implements AgentProviderAdapter {
     const finalPrompt = systemText
       ? `${systemText}\n\n---\n\n${prompt}`
       : prompt
+    const imagePaths = extractAttachedImagePaths(finalPrompt)
+    const runInput: import('@openai/codex-sdk').Input = imagePaths.length > 0
+      ? [
+          { type: 'text', text: finalPrompt },
+          ...imagePaths.map((path) => ({ type: 'local_image' as const, path })),
+        ]
+      : finalPrompt
 
     // 7. 运行并转换事件流
     let finalUsage: CodexUsage | undefined
@@ -473,7 +620,10 @@ export class CodexAgentAdapter implements AgentProviderAdapter {
     let resolvedModelEmitted = false
 
     try {
-      const runResult = await thread.runStreamed(finalPrompt)
+      const runResult = await thread.runStreamed(runInput, {
+        signal: controller.signal,
+        ...(outputFormat?.schema && { outputSchema: outputFormat.schema }),
+      })
       const events = runResult.events as AsyncIterable<CodexEvent>
 
       for await (const event of events) {
@@ -507,7 +657,17 @@ export class CodexAgentAdapter implements AgentProviderAdapter {
             break
           }
           case 'item.started': {
-            // 暂不输出，等 item.completed（避免重复存储）
+            if (event.item) {
+              const msgs = convertCodexItemToSDKMessages(event.item, { transient: true, includeToolResult: false })
+              for (const msg of msgs) yield msg
+            }
+            break
+          }
+          case 'item.updated': {
+            if (event.item) {
+              const msgs = convertCodexItemToSDKMessages(event.item, { transient: true })
+              for (const msg of msgs) yield msg
+            }
             break
           }
           case 'item.completed': {

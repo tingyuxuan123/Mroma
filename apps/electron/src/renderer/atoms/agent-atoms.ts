@@ -618,17 +618,17 @@ export function applyAgentEvent(
       // 等待 STREAM_COMPLETE IPC 回调通过删除流式状态来控制 UI 就绪状态
       // 这避免了用户在后端尚未完成清理时就能发送新消息的竞态条件
       // 同时将未完成的工具活动标记为 done（兜底）
-      // 合并 turn 结束时的 usage：部分模型（如 mimo-v2.5-pro 等第三方 Anthropic 兼容渠道）
-      // SDK 不在流式过程中的 assistant 消息上挂 usage，只在 result 里给出，
-      // 这里必须合并，否则 ContextUsageBadge 圆环永远拿不到 token 数据
+      // result.usage 是整次 Agent 任务的累计用量；ContextUsageBadge 需要展示最近一次模型调用
+      // 的窗口占用。已有 usage_update 时不覆盖，仅在第三方渠道缺少流式 usage 时兜底填充。
+      const shouldUseResultUsage = prev.inputTokens == null
       return {
         ...prev,
         retrying: undefined,
         ...finalizeStreamingActivities(prev.toolActivities),
-        ...(event.usage?.inputTokens != null && { inputTokens: event.usage.inputTokens }),
-        ...(event.usage?.outputTokens != null && { outputTokens: event.usage.outputTokens }),
-        ...(event.usage?.cacheReadTokens != null && { cacheReadTokens: event.usage.cacheReadTokens }),
-        ...(event.usage?.cacheCreationTokens != null && { cacheCreationTokens: event.usage.cacheCreationTokens }),
+        ...(shouldUseResultUsage && event.usage?.inputTokens != null && { inputTokens: event.usage.inputTokens }),
+        ...(shouldUseResultUsage && event.usage?.outputTokens != null && { outputTokens: event.usage.outputTokens }),
+        ...(shouldUseResultUsage && event.usage?.cacheReadTokens != null && { cacheReadTokens: event.usage.cacheReadTokens }),
+        ...(shouldUseResultUsage && event.usage?.cacheCreationTokens != null && { cacheCreationTokens: event.usage.cacheCreationTokens }),
         ...(event.usage?.costUsd != null && { costUsd: event.usage.costUsd }),
         ...(event.usage?.contextWindow && { contextWindow: event.usage.contextWindow }),
       }

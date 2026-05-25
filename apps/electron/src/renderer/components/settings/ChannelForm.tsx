@@ -27,6 +27,7 @@ import {
   Settings2,
   ImageIcon,
   Gauge,
+  Brain,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSetAtom } from 'jotai'
@@ -34,6 +35,13 @@ import { channelFormDirtyAtom } from '@/atoms/settings-tab'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   PROVIDER_DEFAULT_URLS,
   PROVIDER_LABELS,
@@ -77,6 +85,15 @@ interface ChannelFormProps {
 
 /** 所有可选供应商 */
 const PROVIDER_OPTIONS: ProviderType[] = ['anthropic', 'openai-chat', 'openai-responses', 'deepseek', 'google', 'kimi-api', 'kimi-coding', 'zhipu', 'minimax', 'doubao', 'qwen']
+
+const REASONING_EFFORT_OPTIONS = [
+  { value: 'default', label: '默认' },
+  { value: 'minimal', label: 'Minimal' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+  { value: 'max', label: 'Max' },
+] as const
 
 /** 供应商选项（用于 SettingsSelect） */
 const PROVIDER_SELECT_OPTIONS = PROVIDER_OPTIONS.map((p) => ({
@@ -628,6 +645,8 @@ export function ChannelForm({ channel, onSaved, onAgentEligibilityChange, onCanc
                   cfg.maxOutputTokens !== undefined ||
                   cfg.supportsImage === true ||
                   cfg.supportsFast === true ||
+                  cfg.fastMode === true ||
+                  cfg.reasoningEffort !== undefined ||
                   cfg.enableExtendedContext === true
                 )
                 return (
@@ -647,7 +666,8 @@ export function ChannelForm({ channel, onSaved, onAgentEligibilityChange, onCanc
                             {cfg.contextTokenLimit !== undefined && cfg.maxOutputTokens !== undefined && ' · '}
                             {cfg.maxOutputTokens !== undefined && `输出 ${formatTokenValue(cfg.maxOutputTokens)}`}
                             {cfg.supportsImage === true && ' · 图像'}
-                            {cfg.supportsFast === true && ' · 快速'}
+                            {(cfg.fastMode === true || cfg.supportsFast === true) && ' · Fast'}
+                            {cfg.reasoningEffort !== undefined && ` · 思考 ${cfg.reasoningEffort}`}
                             {cfg.enableExtendedContext === true && ' · 1M'}
                           </span>
                         )}
@@ -728,6 +748,38 @@ export function ChannelForm({ channel, onSaved, onAgentEligibilityChange, onCanc
                           </p>
                         </div>
 
+                        {/* 思考深度 */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <Brain size={13} className="text-muted-foreground" />
+                            <span className="text-xs font-medium text-foreground">思考深度</span>
+                          </div>
+                          <Select
+                            value={cfg?.reasoningEffort ?? 'default'}
+                            onValueChange={(value) => {
+                              handleAdvancedConfigChange(model.id, {
+                                reasoningEffort: value === 'default'
+                                  ? undefined
+                                  : value as NonNullable<ModelAdvancedConfig['reasoningEffort']>,
+                              })
+                            }}
+                          >
+                            <SelectTrigger className="h-8 text-sm">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {REASONING_EFFORT_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            Agent 模式默认推理深度。Codex 会传给 model_reasoning_effort，Fast 模式不依赖此项
+                          </p>
+                        </div>
+
                         {/* 能力开关 */}
                         <div className="flex flex-wrap gap-2">
                           {/* 图像支持 */}
@@ -751,11 +803,12 @@ export function ChannelForm({ channel, onSaved, onAgentEligibilityChange, onCanc
                           <button
                             type="button"
                             onClick={() => handleAdvancedConfigChange(model.id, {
-                              supportsFast: cfg?.supportsFast === true ? undefined : true,
+                              fastMode: (cfg?.fastMode === true || cfg?.supportsFast === true) ? undefined : true,
+                              supportsFast: undefined,
                             })}
                             className={cn(
                               'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs transition-colors border',
-                              cfg?.supportsFast === true
+                              (cfg?.fastMode === true || cfg?.supportsFast === true)
                                 ? 'bg-amber-500/10 border-amber-500/30 text-amber-600'
                                 : 'bg-muted/50 border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted',
                             )}

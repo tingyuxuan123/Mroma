@@ -525,6 +525,19 @@ export function useGlobalAgentListeners(): void {
             store.set(liveMessagesMapAtom, (prev) => {
               const map = new Map(prev)
               const current = map.get(sessionId) ?? []
+              const streamingKey = msgRecord._codexStreamingKey as string | undefined
+
+              if (streamingKey) {
+                const existingIndex = current.findIndex((message) =>
+                  (message as Record<string, unknown>)._codexStreamingKey === streamingKey
+                )
+                if (existingIndex >= 0) {
+                  const next = [...current]
+                  next[existingIndex] = payload.message
+                  map.set(sessionId, next)
+                  return map
+                }
+              }
 
               // UUID 去重：队列消息已被乐观注入，SDK 再次推送时跳过
               const incomingUuid = msgRecord.uuid as string | undefined

@@ -33,6 +33,7 @@ type SDKQuery = ReturnType<typeof import('@anthropic-ai/claude-agent-sdk').query
 
 /** SDK 用户消息类型 */
 type SDKUserMessage = import('@anthropic-ai/claude-agent-sdk').SDKUserMessage
+type ClaudeEffortLevel = import('@anthropic-ai/claude-agent-sdk').EffortLevel
 
 // ============================================================================
 // 长生命周期消息通道
@@ -110,6 +111,11 @@ function createMessageChannel(signal: AbortSignal): MessageChannel {
   }
 }
 
+function mapAgentEffortToClaude(effort: AgentEffort | undefined): ClaudeEffortLevel | undefined {
+  if (!effort) return undefined
+  return effort === 'minimal' ? 'low' : effort
+}
+
 // ============================================================================
 // Claude 适配器专用查询选项
 // ============================================================================
@@ -183,6 +189,15 @@ export interface ClaudeAgentQueryOptions extends AgentQueryInput {
   sdkSessionId?: string
   /** 附加的外部目录（SDK additionalDirectories） */
   additionalDirectories?: string[]
+
+  // ===== Codex adapter 复用本 options 形状的字段 =====
+
+  /** Codex 原生 Web Search 模式 */
+  webSearchMode?: 'disabled' | 'cached' | 'live'
+  /** Codex workspace-write 沙箱是否允许命令联网 */
+  networkAccessEnabled?: boolean
+  /** Codex Fast 模式 */
+  fastMode?: boolean
 }
 
 // ============================================================================
@@ -687,7 +702,7 @@ export class ClaudeAgentAdapter implements AgentProviderAdapter {
 
         // SDK 0.2.52+ 新增选项透传
         ...(options.thinking && { thinking: options.thinking }),
-        ...(options.effort && { effort: options.effort }),
+        ...(options.effort && { effort: mapAgentEffortToClaude(options.effort) }),
         ...(options.agents && { agents: options.agents }),
         ...(options.agent && { agent: options.agent }),
         ...(options.enableFileCheckpointing != null && { enableFileCheckpointing: options.enableFileCheckpointing }),

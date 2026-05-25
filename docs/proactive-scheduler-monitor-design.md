@@ -1,8 +1,8 @@
 # Mroma Proactive Center 设计文档
 
-> 版本：Draft 1  
-> 日期：2026-05-18  
-> 范围：Mroma OSS Electron app 的主动协作、定时任务、Monitor、Memory 插件化与 UI 设计
+> 版本：Draft 2  
+> 日期：2026-05-25  
+> 范围：Mroma OSS Electron app 的主动协作、定时任务、Monitor、Memory 插件化、Agent Runtime 上下文管理与 UI 设计
 
 ## 1. 背景
 
@@ -11,12 +11,15 @@ Mroma 现在已经具备 Agent 会话、工作区 Skills/MCP、本地 JSON/JSONL
 这份设计把三个来源合并成一个产品方向：
 
 - Claude Agent SDK / Claude Code 的内置能力：`CronCreate` / `CronList` / `CronDelete`、`Monitor`、Desktop scheduled tasks、Routines、Hooks、custom MCP tools。
+- Mroma 当前 Agent Runtime 的多后端现状：Claude Agent SDK 与 Codex SDK 已通过统一 adapter/orchestrator 接入，但 Codex SDK 只提供 turn usage，没有原生 compact API 或 compact event。
 - Mroma 早期 proactive 设计探索：Proactive Jobs、Silent Watchdog、Persistent Goal、Session Recall、Skill Curator、Event Hooks。
 - 外置实验插件 [Mroma_Proactive](https://github.com/SheldonLiu0412/Mroma_Proactive)：`memory-init`、`memory-daily`、`memory-search`、`memory-edit`、`memory-runner.mjs`、本地 `.memory/` 数据结构。
 
 核心判断：
 
 Claude 内置 Cron/Monitor 可以兼容和展示，但不应成为 Mroma 的长期调度核心。Mroma 需要自己的 durable Scheduler/Monitor，并把 `Mroma_Proactive` 产品化为第一个官方级 proactive plugin/routine 样板。
+
+同样，Proactive run 不能假设所有后端都具备 Claude 原生上下文管理能力。长期、定时、后台执行尤其容易触发上下文膨胀，因此 Scheduler/RunService 必须使用 Mroma 语义化 Agent Runtime：统一读取上下文用量、触发 `compactContext`、记录 `compact_boundary` / `compact_failed`，并在 Codex 后端通过 Mroma 托管式摘要重建新 thread。
 
 ## 2. 产品目标
 
@@ -37,6 +40,7 @@ Mroma 应该让用户感知到：
 3. 支持 plugin/routine 声明，让 `Mroma_Proactive` 这类外置能力可被 Mroma 安装、配置、调度、审计。
 4. 用 in-process MCP tools 暴露 Mroma 的 Scheduler/Monitor/Memory 能力给 Agent。
 5. 将主动推荐做成产品级 UI，而不是靠 prompt 或隐藏设置。
+6. 建立 provider-agnostic Agent runtime 策略：Proactive run 不直接依赖 Claude/Codex 细节，而是统一使用 context usage、auto compact、compact boundary、compact failure 等语义事件。
 
 ### 2.3 非目标
 
@@ -780,6 +784,20 @@ sequenceDiagram
 - 调用 `runAgentHeadless()`。
 - 捕获完成、错误、cost、turns。
 - 链接 `TaskRun` 和 Mroma session。
+- 订阅 Agent Runtime 的 context usage / compact 语义事件，并写回 `TaskRun`。
+- 在长任务或后台任务继续执行前，按策略触发 `compactContext`，避免长期 run 因上下文膨胀失败。
+
+#### AgentRuntimeContextManager
+
+职责：
+
+- 统一处理 Claude / Codex 等后端的上下文用量语义。
+- 对 Codex 使用 `AgentContextUsage.source = estimated`，不把 turn usage 伪装成 SDK 精确窗口值。
+- 根据模型高级配置中的 `contextTokenLimit` 和 `autoCompactThresholdPercent` 判断是否需要压缩。
+- 调用语义化 `compactContext`，而不是把 `/compact` 当普通用户消息发送。
+- 记录 `compact_boundary`、`compact_failed`、触发原因、旧 `sdkSessionId`、摘要和错误信息。
+- 在 Codex 后端执行 Mroma 托管式压缩：生成摘要、清空旧 `sdkSessionId`、下一轮用摘要启动新 thread。
+- 压缩失败时保留旧 thread 可用，并把失败卡片和重试入口展示给用户。
 
 #### PluginRuntime
 
@@ -871,6 +889,29 @@ interface TaskRun {
   error?: string
   totalCostUsd?: number
   numTurns?: number
+  contextUsage?: {
+    backend: 'claude' | 'codex'
+    source: 'sdk' | 'estimated' | 'configured' | 'fallback'
+    scope: 'turn' | 'active_context' | 'session'
+    inputTokens: number
+    cachedInputTokens?: number
+    outputTokens?: number
+    reasoningTokens?: number
+    estimatedActiveTokens?: number
+    contextWindow?: number
+    usedPercent?: number
+    updatedAt: number
+  }
+  compactEvents?: Array<{
+    type: 'started' | 'completed' | 'failed'
+    reason: 'manual' | 'auto' | 'prompt_too_long'
+    backend: 'claude' | 'codex'
+    oldSdkSessionId?: string
+    newSdkSessionId?: string
+    summary?: string
+    error?: string
+    createdAt: number
+  }>
 }
 ```
 
@@ -932,9 +973,79 @@ interface Recommendation {
           diary/
 ```
 
-## 10. Claude SDK 集成策略
+## 10. Agent Runtime 与 SDK 集成策略
 
-### 10.1 内置 Cron
+Proactive Center 面向长期任务，必须把 Agent 后端差异收敛到 Mroma 自己的 runtime 语义上，而不是直接暴露某个 SDK 的行为。Claude 与 Codex 都可以驱动 proactive run，但 RunService、SchedulerService、MonitorService 只依赖统一的 Mroma 事件和持久化字段。
+
+### 10.1 统一上下文用量语义
+
+所有 proactive run 都应记录 `AgentContextUsage`：
+
+- `backend`：`claude` / `codex`。
+- `source`：`sdk` / `estimated` / `configured` / `fallback`。
+- `scope`：`turn` / `active_context` / `session`。
+- `inputTokens`、`cachedInputTokens`、`outputTokens`、`reasoningTokens`。
+- `estimatedActiveTokens`、`contextWindow`、`usedPercent`。
+
+后端差异：
+
+- Claude：可以优先使用 SDK / modelUsage 的上下文窗口与用量信息。
+- Codex：当前只提供 turn-level `input_tokens`、`cached_input_tokens`、`output_tokens`、`reasoning_output_tokens`，因此 `source = estimated`，`scope = turn`，并避免把 cached tokens 二次累加。
+
+UI 要明确展示数据来源：Codex 的百分比和自动压缩阈值是 Mroma 估算，不是 SDK 精确 remaining context。
+
+### 10.2 语义化 compact 协议
+
+Proactive run 不应通过发送普通用户消息 `/compact` 来压缩上下文，而应调用语义化入口：
+
+```ts
+interface AgentCompactInput extends Omit<AgentSendInput, 'userMessage'> {
+  reason?: 'manual' | 'auto' | 'prompt_too_long'
+  mode?: 'managed' | 'fallback_prompt'
+}
+```
+
+运行结果通过 SDK system message 持久化：
+
+- `subtype = 'compacting'`：临时流式状态，不写入长期 JSONL。
+- `subtype = 'compact_boundary'`：压缩成功边界，包含摘要、触发原因、旧 `sdkSessionId`、完成时间。
+- `subtype = 'compact_failed'`：压缩失败边界，包含错误信息、触发原因、旧 `sdkSessionId`、失败时间。
+
+UI 要展示：
+
+- `compact_boundary` 摘要卡片：说明“摘要已接入后续上下文”，完整历史仍保留在 UI / JSONL 中。
+- `compact_failed` 失败卡片：说明旧 thread 未被重置、原上下文仍可继续使用，并提供重新压缩入口。
+
+### 10.3 Codex 托管式 compact
+
+Codex SDK 当前没有 compact API / compact event。Mroma 对 Codex 使用托管式压缩：
+
+1. 从 Mroma JSONL 中读取当前会话历史。
+2. 过滤 transient 流式消息和已压缩边界之前的消息。
+3. 构建 deterministic transcript summary；后续可以升级为可选 LLM summary。
+4. 写入 `compact_boundary`，记录 summary、reason、old sdk session id。
+5. 清空当前会话的 Codex `sdkSessionId`。
+6. 下一轮发送时启动新的 Codex thread，并通过 `<managed_compact_summary>` 注入摘要。
+7. 如果失败，写入 `compact_failed`，保留旧 `sdkSessionId`，不破坏继续对话能力。
+
+这让 Daily Memory、Weekly Review、Release Monitor 等长期 run 可以在 Codex 后端上持续运行，而不会假设 Codex 具备 Claude 原生上下文压缩。
+
+### 10.4 Proactive run 的自动压缩策略
+
+自动压缩只应在 turn 完成后判断，不能在流式输出中途触发。
+
+建议条件：
+
+- schedule / monitor / routine 启用了 auto compact。
+- 已知有效 `contextWindow`。
+- `estimatedActiveTokens` 或 `inputTokens` 超过阈值。
+- 当前 session 没有 `compactInFlight`。
+- 最近一次相同 token/window 状态没有刚触发过压缩。
+- 当前 run 未失败、未被用户中止。
+
+默认阈值建议保守，例如 85%。Codex 场景 UI 必须显示“估算”。
+
+### 10.5 内置 Cron
 
 Claude 内置 `CronCreate` / `CronList` / `CronDelete` 应支持 UI 展示和结果渲染，但仅作为 SDK runtime 能力兼容。
 
@@ -947,7 +1058,7 @@ Mroma 不应把它作为 durable scheduler 的主实现，因为它是 session-s
 - `CronCreate` / `CronDelete` 需要用户确认。
 - 在 Mroma UI 中提示它是 session-scoped，不等价于 Mroma durable schedule。
 
-### 10.2 内置 Monitor
+### 10.6 内置 Monitor
 
 Claude 内置 `Monitor` 可用于短期命令观察。
 
@@ -958,7 +1069,7 @@ Claude 内置 `Monitor` 可用于短期命令观察。
 - 如果全局设置禁用了 nonessential traffic 或相关环境导致不可用，UI 显示原因。
 - 长期 monitor 仍使用 Mroma `MonitorService`。
 
-### 10.3 Mroma MCP Tools
+### 10.7 Mroma MCP Tools
 
 Mroma 应通过 `createSdkMcpServer` 暴露自身能力。
 
@@ -1197,6 +1308,35 @@ Scenario: Stop a runaway proactive run
   And the run history records the budget stop reason
 ```
 
+### 13.6 Agent Runtime 上下文管理
+
+```gherkin
+Feature: Proactive Agent runtime context management
+
+Scenario: Record Codex estimated context usage for a proactive run
+  Given a proactive run uses the Codex backend
+  When Codex returns turn usage with cached input tokens
+  Then Mroma stores TaskRun contextUsage with source "estimated"
+  And cached input tokens are not counted twice
+  And the UI marks the usage as estimated
+
+Scenario: Auto compact a long proactive Codex run
+  Given a proactive Codex run has a configured context window
+  And the estimated active context exceeds the auto compact threshold
+  When the turn completes successfully
+  Then RunService requests semantic compactContext with reason "auto"
+  And Mroma persists a compact_boundary with the generated summary
+  And the next turn starts a new Codex thread with the managed compact summary injected
+
+Scenario: Keep the original Codex thread usable after compact failure
+  Given a proactive Codex run is compacting context
+  When managed compaction fails
+  Then Mroma persists a compact_failed system message
+  And TaskRun records the compact failure in compactEvents
+  And the old sdkSessionId remains available for the next turn
+  And the UI shows a retryable compact failure card
+```
+
 ## 14. MVP 分期
 
 ### Phase 1: Proactive foundation
@@ -1207,6 +1347,7 @@ Scenario: Stop a runaway proactive run
 - 新增 `Schedules` 列表和详情。
 - 实现 `SchedulerService` skeleton。
 - 实现 `TaskRun` 持久化。
+- `TaskRun` 记录 `contextUsage` 和 `compactEvents`，为后续长任务上下文管理打底。
 - 增加 `Monitor` 工具 UI 映射。
 - 兼容展示 Claude 内置 `Cron*` 工具调用。
 
@@ -1215,6 +1356,7 @@ Scenario: Stop a runaway proactive run
 - 用户可以创建一个本地 durable schedule。
 - App 重启后 schedule 仍存在。
 - 到点能创建 run 记录。
+- run 记录可以展示最近一次上下文用量来源和压缩事件。
 
 ### Phase 2: Mroma Memory plugin MVP
 
@@ -1224,12 +1366,14 @@ Scenario: Stop a runaway proactive run
 - 注册 `memory-daily` routine。
 - 接入 `memory-daily` schedule。
 - Daily run 输出 summary 和 pending approvals。
+- Daily run 通过统一 Agent Runtime 执行，Claude / Codex 后端都能记录 context usage。
 
 验收：
 
 - 用户可以开启每日记忆整理。
 - 到点生成可见运行记录。
 - 记忆变更需要确认。
+- Codex 后端在上下文接近阈值时可以走 Mroma 托管式 compact，失败时保留旧 thread 可继续运行。
 
 ### Phase 3: Recommendation cards
 

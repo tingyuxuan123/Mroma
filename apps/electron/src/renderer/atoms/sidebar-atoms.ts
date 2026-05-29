@@ -19,6 +19,18 @@ export const workspaceListHeightAtom = atomWithStorage<number>(
   120,
 )
 
+/** 会话文件区折叠状态（true = 折叠） */
+export const sessionFilesCollapsedAtom = atomWithStorage<boolean>(
+  'mroma-session-files-collapsed',
+  false,
+)
+
+/** 工作区文件区折叠状态（true = 折叠） */
+export const workspaceFilesCollapsedAtom = atomWithStorage<boolean>(
+  'mroma-workspace-files-collapsed',
+  false,
+)
+
 /**
  * Agent 模式侧边栏上区（Working/置顶 Tab）的高度（px）。
  *

@@ -32,6 +32,7 @@ import { tabMinimapCacheAtom } from '@/atoms/tab-atoms'
 import { channelsAtom } from '@/atoms/chat-atoms'
 import { ScrollPositionManager } from '@/hooks/useScrollPositionMemory'
 import { cn } from '@/lib/utils'
+import { formatAgentUsageScope, formatAgentUsageSource, getPureInputTokens } from '@/lib/agent-usage-format'
 import { Spinner } from '@/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { groupIntoTurns, MessageGroupRenderer, getGroupId, getGroupPreview, extractUserText, parseAttachedFiles as sdkParseAttachedFiles, isImageFile as sdkIsImageFile, CompactingIndicator, buildHistoricalTaskSubjects, type MessageGroup } from './SDKMessageRenderer'
@@ -347,11 +348,23 @@ export function buildUsageTooltip(durationMs: number, usage?: AgentEventUsage): 
   lines.push(`耗时: ${formatDuration(durationMs)}`)
 
   if (usage) {
-    const pureInput = usage.inputTokens - (usage.cacheReadTokens ?? 0) - (usage.cacheCreationTokens ?? 0)
+    const displayTokens = usage.estimatedActiveTokens ?? usage.inputTokens
+    const pureInput = getPureInputTokens(usage.inputTokens, usage.cacheReadTokens, usage.cacheCreationTokens)
     if (pureInput > 0) lines.push(`输入: ${pureInput.toLocaleString()}`)
     if (usage.outputTokens) lines.push(`输出: ${usage.outputTokens.toLocaleString()}`)
+    if (usage.reasoningTokens) lines.push(`推理输出: ${usage.reasoningTokens.toLocaleString()}`)
     if (usage.cacheCreationTokens) lines.push(`缓存写入: ${usage.cacheCreationTokens.toLocaleString()}`)
     if (usage.cacheReadTokens) lines.push(`缓存读取: ${usage.cacheReadTokens.toLocaleString()}`)
+    if (usage.contextWindow) {
+      const percent = Math.round((displayTokens / usage.contextWindow) * 100)
+      lines.push(`上下文: ${displayTokens.toLocaleString()} / ${usage.contextWindow.toLocaleString()} (${percent}%)`)
+    } else if (usage.estimatedActiveTokens != null) {
+      lines.push(`估算上下文: ${usage.estimatedActiveTokens.toLocaleString()}`)
+    }
+    const source = formatAgentUsageSource(usage.source)
+    if (source) lines.push(`来源: ${source}`)
+    const scope = formatAgentUsageScope(usage.scope, usage.backend)
+    if (scope) lines.push(`范围: ${scope}`)
   }
 
   return lines.join('\n')

@@ -95,6 +95,7 @@ import {
   allPendingAskUserRequestsAtom,
   allPendingExitPlanRequestsAtom,
   finalizeStreamingActivities,
+  extractAgentContextStatusFromSDKMessages,
 } from '@/atoms/agent-atoms'
 import type { AgentContextStatus } from '@/atoms/agent-atoms'
 import { settingsOpenAtom } from '@/atoms/settings-tab'
@@ -408,19 +409,24 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
   const effectiveAgentEffort = agentEffort ?? selectedModelAdvancedConfig?.reasoningEffort ?? 'high'
   const effectiveCodexFastMode = selectedModelAdvancedConfig?.fastMode ?? selectedModelAdvancedConfig?.supportsFast
 
+  const historicalContextStatus = React.useMemo(
+    () => extractAgentContextStatusFromSDKMessages(persistedSDKMessages),
+    [persistedSDKMessages],
+  )
+
   const contextStatus: AgentContextStatus = {
-    isCompacting: streamState?.isCompacting ?? false,
-    inputTokens: streamState?.inputTokens,
-    outputTokens: streamState?.outputTokens,
-    reasoningTokens: streamState?.reasoningTokens,
-    cacheReadTokens: streamState?.cacheReadTokens,
-    cacheCreationTokens: streamState?.cacheCreationTokens,
-    costUsd: streamState?.costUsd,
-    contextWindow: userContextTokenLimit ?? streamState?.contextWindow,
-    contextUsageSource: streamState?.contextUsageSource,
-    contextUsageScope: streamState?.contextUsageScope,
-    contextUsageBackend: streamState?.contextUsageBackend,
-    estimatedActiveTokens: streamState?.estimatedActiveTokens,
+    isCompacting: streamState?.isCompacting ?? historicalContextStatus.isCompacting,
+    inputTokens: streamState?.inputTokens ?? historicalContextStatus.inputTokens,
+    outputTokens: streamState?.outputTokens ?? historicalContextStatus.outputTokens,
+    reasoningTokens: streamState?.reasoningTokens ?? historicalContextStatus.reasoningTokens,
+    cacheReadTokens: streamState?.cacheReadTokens ?? historicalContextStatus.cacheReadTokens,
+    cacheCreationTokens: streamState?.cacheCreationTokens ?? historicalContextStatus.cacheCreationTokens,
+    costUsd: streamState?.costUsd ?? historicalContextStatus.costUsd,
+    contextWindow: userContextTokenLimit ?? streamState?.contextWindow ?? historicalContextStatus.contextWindow,
+    contextUsageSource: streamState?.contextUsageSource ?? historicalContextStatus.contextUsageSource,
+    contextUsageScope: streamState?.contextUsageScope ?? historicalContextStatus.contextUsageScope,
+    contextUsageBackend: streamState?.contextUsageBackend ?? historicalContextStatus.contextUsageBackend,
+    estimatedActiveTokens: streamState?.estimatedActiveTokens ?? historicalContextStatus.estimatedActiveTokens,
   }
   const setAgentStreamErrors = useSetAtom(agentStreamErrorsAtom)
   const streamErrors = useAtomValue(agentStreamErrorsAtom)

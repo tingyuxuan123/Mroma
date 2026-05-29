@@ -196,7 +196,9 @@ function payloadToLegacyEvents(payload: AgentStreamPayload): AgentEvent[] {
       // 这里在判定 error 早退之前先派发 usage_update，保证 ContextUsageBadge 圆环仍能更新
       if (!aMsg.parent_tool_use_id && aMsg.message?.usage) {
         const u = aMsg.message.usage
-        const inputTokens = u.input_tokens + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)
+        // input_tokens 已是本轮非缓存输入；cache_read/cache_creation 是 prompt cache 前缀，
+        // 不能叠加进可压缩上下文，否则会把静态系统提示词误算成会话上下文。
+        const inputTokens = u.input_tokens
         // 流式过程中 SDK 不返回 contextWindow，按模型名推断一个默认值作为 fallback
         const modelName = aMsg.message.model ?? aMsg._channelModelId
         const fallbackWindow = inferContextWindow(modelName)
@@ -207,6 +209,9 @@ function payloadToLegacyEvents(payload: AgentStreamPayload): AgentEvent[] {
             outputTokens: u.output_tokens,
             cacheReadTokens: u.cache_read_input_tokens,
             cacheCreationTokens: u.cache_creation_input_tokens,
+            source: 'sdk',
+            scope: 'turn',
+            backend: aMsg.metadata?.backend ?? 'claude',
             ...(fallbackWindow ? { contextWindow: fallbackWindow } : {}),
           },
         })
@@ -289,12 +294,15 @@ function payloadToLegacyEvents(payload: AgentStreamPayload): AgentEvent[] {
         type: 'complete',
         stopReason: rMsg.subtype === 'success' ? 'end_turn' : 'error',
         usage: usage ? {
-          inputTokens: usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0),
+          inputTokens: usage.input_tokens,
           outputTokens: usage.output_tokens,
           cacheReadTokens: usage.cache_read_input_tokens,
           cacheCreationTokens: usage.cache_creation_input_tokens,
           costUsd: rMsg.total_cost_usd,
           contextWindow,
+          source: 'sdk',
+          scope: 'turn',
+          backend: rMsg.metadata?.backend ?? 'claude',
         } : undefined,
       }]
     }

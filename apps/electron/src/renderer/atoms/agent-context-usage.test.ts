@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
-import { applyAgentEvent, type AgentStreamState } from './agent-atoms'
+import type { SDKMessage } from '@mroma/shared'
+import { applyAgentEvent, extractAgentContextStatusFromSDKMessages, type AgentStreamState } from './agent-atoms'
+import { getPureInputTokens } from '../lib/agent-usage-format'
 
 function createRunningState(overrides: Partial<AgentStreamState> = {}): AgentStreamState {
   return {
@@ -11,6 +13,10 @@ function createRunningState(overrides: Partial<AgentStreamState> = {}): AgentStr
 }
 
 describe('Agent 上下文用量指示器状态', () => {
+  test('given cache read tokens are larger than live input when formatting then does not subtract cache from input', () => {
+    expect(getPureInputTokens(27_430, 408_064)).toBe(27_430)
+  })
+
   test('given streaming usage exists when result usage arrives then keeps latest model-call window usage', () => {
     const previous = createRunningState({
       inputTokens: 12_000,
@@ -121,5 +127,143 @@ describe('Agent 上下文用量指示器状态', () => {
     expect(next.running).toBe(false)
     expect(next.isCompacting).toBe(false)
     expect(next.compactInFlight).toBe(false)
+  })
+
+  test('given persisted Codex result when restoring history then exposes latest context usage', () => {
+    const messages = [{
+      type: 'result',
+      subtype: 'success',
+      usage: { input_tokens: 40_000, output_tokens: 2_000, cache_read_input_tokens: 20_000 },
+      contextUsage: {
+        backend: 'codex',
+        source: 'estimated',
+        scope: 'turn',
+        inputTokens: 40_000,
+        cachedInputTokens: 20_000,
+        outputTokens: 2_000,
+        reasoningTokens: 1_000,
+        estimatedActiveTokens: 43_000,
+        contextWindow: 200_000,
+      },
+    }] satisfies SDKMessage[]
+
+    const status = extractAgentContextStatusFromSDKMessages(messages)
+
+    expect(status.inputTokens).toBe(40_000)
+    expect(status.outputTokens).toBe(2_000)
+    expect(status.reasoningTokens).toBe(1_000)
+    expect(status.cacheReadTokens).toBe(20_000)
+    expect(status.estimatedActiveTokens).toBe(43_000)
+    expect(status.contextWindow).toBe(200_000)
+    expect(status.contextUsageBackend).toBe('codex')
+    expect(status.contextUsageSource).toBe('estimated')
+    expect(status.contextUsageScope).toBe('turn')
+  })
+
+  test('given persisted compact boundary when restoring history then keeps zero-token reset state visible', () => {
+    const messages = [{
+      type: 'system',
+      subtype: 'compact_boundary',
+      metadata: { backend: 'codex' },
+    }] satisfies SDKMessage[]
+
+    const status = extractAgentContextStatusFromSDKMessages(messages)
+
+    expect(status.inputTokens).toBe(0)
+    expect(status.estimatedActiveTokens).toBe(0)
+    expect(status.contextUsageBackend).toBe('codex')
+    expect(status.contextUsageSource).toBe('estimated')
+    expect(status.contextUsageScope).toBe('active_context')
+  })
+
+  test('given empty history when restoring usage then returns empty non-compacting state', () => {
+    const status = extractAgentContextStatusFromSDKMessages([])
+
+    expect(status).toEqual({ isCompacting: false })
+  })
+
+  test('given multiple persisted results when restoring history then uses the latest result', () => {
+    const messages = [
+      {
+        type: 'result',
+        subtype: 'success',
+        usage: { input_tokens: 10_000, output_tokens: 500 },
+        contextUsage: {
+          backend: 'claude',
+          source: 'sdk',
+          scope: 'turn',
+          inputTokens: 10_000,
+          outputTokens: 500,
+          contextWindow: 200_000,
+        },
+      },
+      {
+        type: 'result',
+        subtype: 'success',
+        usage: { input_tokens: 90_000, output_tokens: 4_000 },
+        contextUsage: {
+          backend: 'codex',
+          source: 'estimated',
+          scope: 'turn',
+          inputTokens: 90_000,
+          outputTokens: 4_000,
+          estimatedActiveTokens: 94_000,
+          contextWindow: 400_000,
+        },
+      },
+    ] satisfies SDKMessage[]
+
+    const status = extractAgentContextStatusFromSDKMessages(messages)
+
+    expect(status.inputTokens).toBe(90_000)
+    expect(status.outputTokens).toBe(4_000)
+    expect(status.estimatedActiveTokens).toBe(94_000)
+    expect(status.contextWindow).toBe(400_000)
+    expect(status.contextUsageBackend).toBe('codex')
+    expect(status.contextUsageSource).toBe('estimated')
+  })
+
+  test('given persisted result without contextUsage when restoring history then falls back to result usage', () => {
+    const messages = [{
+      type: 'result',
+      subtype: 'success',
+      usage: {
+        input_tokens: 50_000,
+        output_tokens: 3_000,
+        cache_read_input_tokens: 30_000,
+        cache_creation_input_tokens: 5_000,
+      },
+      modelUsage: {
+        stale: { contextWindow: 100_000 },
+        latest: { contextWindow: 300_000 },
+      },
+      metadata: { backend: 'claude' },
+    }] satisfies SDKMessage[]
+
+    const status = extractAgentContextStatusFromSDKMessages(messages)
+
+    expect(status.inputTokens).toBe(50_000)
+    expect(status.outputTokens).toBe(3_000)
+    expect(status.cacheReadTokens).toBe(30_000)
+    expect(status.cacheCreationTokens).toBe(5_000)
+    expect(status.contextWindow).toBe(300_000)
+    expect(status.contextUsageBackend).toBe('claude')
+    expect(status.contextUsageSource).toBe('sdk')
+    expect(status.contextUsageScope).toBe('turn')
+  })
+
+  test('given fallback result has empty modelUsage when restoring history then leaves context window undefined', () => {
+    const messages = [{
+      type: 'result',
+      subtype: 'success',
+      usage: { input_tokens: 8_000, output_tokens: 600 },
+      modelUsage: {},
+    }] satisfies SDKMessage[]
+
+    const status = extractAgentContextStatusFromSDKMessages(messages)
+
+    expect(status.inputTokens).toBe(8_000)
+    expect(status.outputTokens).toBe(600)
+    expect(status.contextWindow).toBeUndefined()
   })
 })

@@ -6,13 +6,14 @@
  * - hover / click 弹出 Popover，内含 token 明细 + 手动压缩按钮
  * - 压缩中时按钮位置显示 Loader2 旋转图标
  * - 占用接近压缩阈值（窗口 × 0.775 × 80%）时圆环变琥珀色
- * - 无数据时不显示
+ * - 无数据时不显示；压缩后 0 token 状态仍显示，避免用户误以为统计丢失
  */
 
 import * as React from 'react'
 import { Loader2, Minimize2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { formatAgentUsageScope, formatAgentUsageSource, getPureInputTokens } from '@/lib/agent-usage-format'
 import { cn } from '@/lib/utils'
 
 /** 压缩阈值比例（SDK 在 ~77.5% 窗口大小时自动压缩） */
@@ -148,7 +149,9 @@ export function ContextUsageBadge({
     usageBackend?: 'claude' | 'codex'
   } | null>(null)
   const currentDisplayTokens = estimatedActiveTokens ?? inputTokens
-  if (currentDisplayTokens && currentDisplayTokens > 0) {
+  const hasCurrentUsage = currentDisplayTokens != null
+    && (currentDisplayTokens > 0 || usageScope === 'active_context')
+  if (hasCurrentUsage) {
     stableRef.current = {
       inputTokens: inputTokens ?? currentDisplayTokens,
       outputTokens,
@@ -197,7 +200,7 @@ export function ContextUsageBadge({
 
   // 使用稳定值：优先当前数据，回退到上次有效数据
   const stable = stableRef.current
-  const hasCurrent = currentDisplayTokens != null && currentDisplayTokens > 0
+  const hasCurrent = hasCurrentUsage
   const displayTokens = hasCurrent ? currentDisplayTokens : (stable?.estimatedActiveTokens ?? stable?.inputTokens)
   const displayInput = hasCurrent ? inputTokens : stable?.inputTokens
   const displayWindow = hasCurrent ? contextWindow : stable?.contextWindow
@@ -208,9 +211,10 @@ export function ContextUsageBadge({
   const displaySource = hasCurrent ? usageSource : stable?.usageSource
   const displayScope = hasCurrent ? usageScope : stable?.usageScope
   const displayBackend = hasCurrent ? usageBackend : stable?.usageBackend
+  const isResetUsage = displayTokens === 0 && displayScope === 'active_context'
 
   // 从未有过 usage 数据 → 不显示
-  if (!displayTokens || displayTokens <= 0) return null
+  if (displayTokens == null || (displayTokens <= 0 && !isResetUsage)) return null
 
   // 警告阈值：基于压缩阈值（contextWindow × 0.775 × 80%）
   const thresholdRatio = (autoCompactThresholdPercent ?? COMPACT_THRESHOLD_RATIO * 100) / 100
@@ -223,8 +227,8 @@ export function ContextUsageBadge({
 
   const ratio = displayWindow ? displayTokens / displayWindow : 0
 
-  // 纯输入 = 总上下文 - 缓存读取 - 缓存写入
-  const pureInput = (displayInput ?? displayTokens) - (displayCacheRead ?? 0) - (displayCacheCreation ?? 0)
+  // inputTokens 与 cache tokens 是并列指标，不能互相加减。
+  const pureInput = getPureInputTokens(displayInput ?? displayTokens, displayCacheRead, displayCacheCreation)
 
   const percent = displayWindow
     ? Math.round((displayTokens / displayWindow) * 100)
@@ -271,15 +275,14 @@ export function ContextUsageBadge({
           {displayReasoning ? <DetailRow label="推理输出" value={displayReasoning.toLocaleString()} /> : null}
           {displayCacheCreation ? <DetailRow label="缓存写入" value={displayCacheCreation.toLocaleString()} /> : null}
           {displayCacheRead ? <DetailRow label="缓存读取" value={displayCacheRead.toLocaleString()} /> : null}
+          {isResetUsage && <DetailRow label="状态" value="已压缩，上下文已重置" emphasized />}
           {displaySource && (
             <DetailRow
               label="来源"
-              value={displaySource === 'estimated' ? '估算' : displaySource === 'sdk' ? 'SDK' : displaySource}
+              value={formatAgentUsageSource(displaySource) ?? displaySource}
             />
           )}
-          {displayBackend === 'codex' && displayScope === 'turn' && (
-            <DetailRow label="范围" value="本轮活跃上下文估算" />
-          )}
+          {displayScope && <DetailRow label="范围" value={formatAgentUsageScope(displayScope, displayBackend) ?? displayScope} />}
 
           {displayWindow ? (
             <>

@@ -7,7 +7,7 @@
 
 import { atom } from 'jotai'
 import { atomFamily, atomWithStorage } from 'jotai/utils'
-import type { AgentSessionMeta, AgentEvent, AgentWorkspace, AgentPendingFile, RetryAttempt, MromaPermissionMode, PermissionRequest, AskUserRequest, ExitPlanModeRequest, ThinkingConfig, AgentEffort, SDKMessage, AgentBackend, AgentContextUsage } from '@mroma/shared'
+import type { AgentSessionMeta, AgentEvent, AgentWorkspace, AgentPendingFile, RetryAttempt, MromaPermissionMode, PermissionRequest, AskUserRequest, ExitPlanModeRequest, ThinkingConfig, AgentEffort, SDKMessage, SDKResultMessage, SDKSystemMessage, AgentBackend, AgentContextUsage } from '@mroma/shared'
 import { MROMA_DEFAULT_PERMISSION_MODE } from '@mroma/shared'
 import { calculateDockBadgeCount, countPendingRequests } from '@/lib/dock-badge-count'
 
@@ -772,6 +772,93 @@ export interface AgentContextStatus {
   contextUsageScope?: AgentContextUsage['scope']
   contextUsageBackend?: AgentBackend
   estimatedActiveTokens?: number
+}
+
+const EMPTY_AGENT_CONTEXT_STATUS: AgentContextStatus = { isCompacting: false }
+
+function isSDKResultMessage(message: SDKMessage): message is SDKResultMessage {
+  if (message.type !== 'result') return false
+  if (!('usage' in message)) return false
+  return typeof message.usage === 'object' && message.usage !== null
+}
+
+function isSDKSystemMessage(message: SDKMessage): message is SDKSystemMessage {
+  return message.type === 'system'
+}
+
+function getContextWindowFromModelUsage(modelUsage?: SDKResultMessage['modelUsage']): number | undefined {
+  if (!modelUsage) return undefined
+
+  const values = Object.values(modelUsage)
+  for (let index = values.length - 1; index >= 0; index--) {
+    const contextWindow = values[index]?.contextWindow
+    if (typeof contextWindow === 'number' && contextWindow > 0) return contextWindow
+  }
+  return undefined
+}
+
+function contextStatusFromResultMessage(message: SDKResultMessage): AgentContextStatus | null {
+  if (message.contextUsage) {
+    const usage = message.contextUsage
+    return {
+      isCompacting: false,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      reasoningTokens: usage.reasoningTokens,
+      cacheReadTokens: usage.cachedInputTokens,
+      costUsd: message.total_cost_usd,
+      contextWindow: usage.contextWindow,
+      contextUsageSource: usage.source,
+      contextUsageScope: usage.scope,
+      contextUsageBackend: usage.backend,
+      estimatedActiveTokens: usage.estimatedActiveTokens,
+    }
+  }
+
+  const usage = message.usage
+  if (!usage) return null
+
+  return {
+    isCompacting: false,
+    inputTokens: usage.input_tokens,
+    outputTokens: usage.output_tokens,
+    cacheReadTokens: usage.cache_read_input_tokens,
+    cacheCreationTokens: usage.cache_creation_input_tokens,
+    costUsd: message.total_cost_usd,
+    contextWindow: getContextWindowFromModelUsage(message.modelUsage),
+    contextUsageSource: 'sdk',
+    contextUsageScope: 'turn',
+    contextUsageBackend: message.metadata?.backend,
+  }
+}
+
+function contextStatusFromCompactBoundary(message: SDKSystemMessage): AgentContextStatus | null {
+  if (message.subtype !== 'compact_boundary') return null
+  return {
+    isCompacting: false,
+    inputTokens: 0,
+    estimatedActiveTokens: 0,
+    contextUsageSource: 'estimated',
+    contextUsageScope: 'active_context',
+    contextUsageBackend: message.metadata?.backend,
+  }
+}
+
+/** 从持久化 SDKMessage 中恢复最近一次上下文用量，避免历史会话输入框徽章消失。 */
+export function extractAgentContextStatusFromSDKMessages(messages: SDKMessage[]): AgentContextStatus {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]
+    if (!message) continue
+    if (isSDKResultMessage(message)) {
+      const status = contextStatusFromResultMessage(message)
+      if (status) return status
+    }
+    if (isSDKSystemMessage(message)) {
+      const status = contextStatusFromCompactBoundary(message)
+      if (status) return status
+    }
+  }
+  return EMPTY_AGENT_CONTEXT_STATUS
 }
 
 /** 当前会话的上下文使用量派生 atom */

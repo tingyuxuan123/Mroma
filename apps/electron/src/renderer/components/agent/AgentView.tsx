@@ -178,13 +178,10 @@ function getUserTextFromSDKMessage(message: SDKMessage): string | null {
 
 interface AgentThinkingPopoverProps {
   agentThinking: import('@mroma/shared').ThinkingConfig | undefined
-  effort: AgentEffort
-  showEffortSelector: boolean
   onToggle: () => void
-  onEffortChange: (effort: AgentEffort) => void
 }
 
-function AgentThinkingPopover({ agentThinking, effort, showEffortSelector, onToggle, onEffortChange }: AgentThinkingPopoverProps): React.ReactElement {
+function AgentThinkingPopover({ agentThinking, onToggle }: AgentThinkingPopoverProps): React.ReactElement {
   const [thinkingExpanded, setThinkingExpanded] = useAtom(thinkingExpandedAtom)
   const [open, setOpen] = React.useState(false)
   const hoverTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -228,7 +225,7 @@ function AgentThinkingPopover({ agentThinking, effort, showEffortSelector, onTog
         side="top"
         align="center"
         sideOffset={8}
-        className="w-auto min-w-[180px] p-2 px-2.5"
+        className="w-auto min-w-[160px] p-2 px-2.5"
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onOpenAutoFocus={(e) => e.preventDefault()}
@@ -243,26 +240,6 @@ function AgentThinkingPopover({ agentThinking, effort, showEffortSelector, onTog
             />
           </div>
           <div className="h-px bg-border" />
-          {showEffortSelector && (
-            <>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-xs text-foreground/70">思考深度</span>
-                <Select value={effort} onValueChange={(value) => onEffortChange(value as AgentEffort)}>
-                  <SelectTrigger className="h-7 w-[96px] text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {AGENT_EFFORT_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="h-px bg-border" />
-            </>
-          )}
           <div className="flex items-center justify-between gap-4">
             <span className="text-xs text-foreground/70">展开思考</span>
             <Switch
@@ -1823,6 +1800,14 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
           agentOnly
           externalSelectedModel={externalSelectedModel}
           onModelSelect={handleModelSelect}
+          effort={effectiveAgentEffort}
+          onEffortChange={(nextEffort) => {
+            setAgentEffort(nextEffort as AgentEffort)
+            window.electronAPI.updateSettings({ agentEffort: nextEffort as AgentEffort })
+          }}
+          fastMode={effectiveCodexFastMode}
+          onFastModeChange={() => {}}
+          isCodexChannel={isCodexChannel}
         />
       ),
     },
@@ -1832,18 +1817,12 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       node: (
         <AgentThinkingPopover
           agentThinking={agentThinking}
-          effort={effectiveAgentEffort}
-          showEffortSelector={isCodexChannel}
           onToggle={() => {
             const next = agentThinking?.type === 'adaptive'
               ? { type: 'disabled' as const }
               : { type: 'adaptive' as const }
             setAgentThinking(next)
             window.electronAPI.updateSettings({ agentThinking: next })
-          }}
-          onEffortChange={(nextEffort) => {
-            setAgentEffort(nextEffort)
-            window.electronAPI.updateSettings({ agentEffort: nextEffort })
           }}
         />
       ),

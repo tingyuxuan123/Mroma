@@ -13,6 +13,8 @@ import type { MromaPermissionMode, AgentDefinition } from '@mroma/shared'
 import { getUserProfile } from './user-profile-service'
 import { getWorkspaceMcpConfig, getWorkspaceSkills } from './agent-workspace-manager'
 import { getConfigDirName } from './config-paths'
+import { existsSync, readFileSync } from 'fs'
+import { join } from 'path'
 
 // ===== 内置 SubAgent 定义 =====
 
@@ -497,6 +499,48 @@ export function buildDynamicContext(ctx: DynamicContext): string {
       ...uniqueDirs.map((dir) => `- ${dir}`),
       '</accessible_directories>',
     ].join('\n'))
+
+    // 自动读取项目级 AGENTS.md / CLAUDE.md 作为编码规范注入
+    const INSTRUCTION_FILES = ['AGENTS.md', 'CLAUDE.md'] as const
+    const MAX_INSTRUCTION_FILE_SIZE = 32 * 1024 // 32KB 限制，防止过大文件
+    const collectedInstructions: Array<{ fileName: string; dirPath: string; content: string }> = []
+
+    for (const dir of uniqueDirs) {
+      for (const fileName of INSTRUCTION_FILES) {
+        const filePath = join(dir, fileName)
+        try {
+          if (existsSync(filePath)) {
+            const stat = require('fs').statSync(filePath)
+            if (stat.size > 0 && stat.size <= MAX_INSTRUCTION_FILE_SIZE) {
+              const content = readFileSync(filePath, 'utf-8').trim()
+              if (content.length > 0) {
+                // 去重：同一文件名只取第一个找到的
+                if (!collectedInstructions.some((i) => i.fileName === fileName)) {
+                  collectedInstructions.push({ fileName, dirPath: dir, content })
+                }
+              }
+            }
+          }
+        } catch {
+          // 读取失败静默跳过
+        }
+      }
+    }
+
+    if (collectedInstructions.length > 0) {
+      const instrLines: string[] = [
+        '<project_instructions>',
+        '以下是从项目根目录自动读取的编码规范文件（AGENTS.md / CLAUDE.md），请严格遵循其中的规则和约定：',
+        '',
+      ]
+      for (const { fileName, dirPath, content } of collectedInstructions) {
+        instrLines.push(`### ${fileName}（${dirPath}）`)
+        instrLines.push(content)
+        instrLines.push('')
+      }
+      instrLines.push('</project_instructions>')
+      sections.push(instrLines.join('\n'))
+    }
   }
 
   // 工作目录

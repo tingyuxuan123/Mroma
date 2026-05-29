@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Proma Icon Generation Script
+# Mroma Icon Generation Script
 # Generates all required icon formats from icon.svg
 # Requires: rsvg-convert (librsvg), iconutil (macOS), magick (ImageMagick)
 
@@ -9,7 +9,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-echo "🎨 Generating Proma icons..."
+echo "🎨 Generating Mroma icons..."
 
 # Check required tools
 if ! command -v rsvg-convert &> /dev/null; then
@@ -30,7 +30,14 @@ fi
 echo "📦 Generating icon.png (1024x1024)..."
 rsvg-convert -w 1024 -h 1024 icon.svg -o icon.png
 
-# 2. Generate menubar/tray icons (multi-resolution for Retina displays)
+# 2. Generate Linux icon set. electron-builder 要求 Linux 图标目录内的文件名带尺寸。
+echo "📦 Generating Linux icon set..."
+mkdir -p icons
+for size in 16 24 32 48 64 128 256 512 1024; do
+  rsvg-convert -w "$size" -h "$size" icon.svg -o "icons/${size}x${size}.png"
+done
+
+# 3. Generate menubar/tray icons (multi-resolution for Retina displays)
 echo "📦 Generating tray icons..."
 
 # macOS 托盘图标规范：
@@ -38,23 +45,23 @@ echo "📦 Generating tray icons..."
 # - @2x Retina: 44x44px
 # - @3x 高分辨率: 66x66px
 # 使用 "Template" 命名让 macOS 自动适配深色/浅色菜单栏
-TRAY_SVG="proma-logos/icon.svg"
+TRAY_SVG="mroma-logos/icon.svg"
 
 if [ ! -f "$TRAY_SVG" ]; then
   echo "⚠️  Tray icon SVG not found at $TRAY_SVG, skipping tray icon generation"
 else
   # 生成多分辨率 Template 图标（macOS 会自动选择合适的版本）
-  rsvg-convert -w 22 -h 22 "$TRAY_SVG" -o proma-logos/iconTemplate.png
-  rsvg-convert -w 44 -h 44 "$TRAY_SVG" -o "proma-logos/iconTemplate@2x.png"
-  rsvg-convert -w 66 -h 66 "$TRAY_SVG" -o "proma-logos/iconTemplate@3x.png"
+  rsvg-convert -w 22 -h 22 "$TRAY_SVG" -o mroma-logos/iconTemplate.png
+  rsvg-convert -w 44 -h 44 "$TRAY_SVG" -o "mroma-logos/iconTemplate@2x.png"
+  rsvg-convert -w 66 -h 66 "$TRAY_SVG" -o "mroma-logos/iconTemplate@3x.png"
 
   echo "✅ Tray icons generated:"
-  echo "   - proma-logos/iconTemplate.png (22x22 @1x)"
-  echo "   - proma-logos/iconTemplate@2x.png (44x44 @2x Retina)"
-  echo "   - proma-logos/iconTemplate@3x.png (66x66 @3x)"
+  echo "   - mroma-logos/iconTemplate.png (22x22 @1x)"
+  echo "   - mroma-logos/iconTemplate@2x.png (44x44 @2x Retina)"
+  echo "   - mroma-logos/iconTemplate@3x.png (66x66 @3x)"
 fi
 
-# 3. Generate .icns (macOS app icon)
+# 4. Generate .icns (macOS app icon)
 if command -v iconutil &> /dev/null; then
     echo "📦 Generating icon.icns..."
 
@@ -85,7 +92,7 @@ else
     echo "⚠️  Skipping .icns generation (iconutil not available)"
 fi
 
-# 4. Generate .ico (Windows app icon)
+# 5. Generate .ico (Windows app icon)
 echo "📦 Generating icon.ico..."
 magick icon.png -define icon:auto-resize=256,128,96,64,48,32,16 icon.ico
 echo "✅ icon.ico generated"
@@ -95,8 +102,9 @@ echo "✅ All icons generated successfully!"
 echo ""
 echo "Generated files:"
 echo "  - icon.png (1024x1024) - Linux & macOS Dock"
+echo "  - icons/*.png - Linux desktop icon set"
 echo "  - icon.icns - macOS app icon"
 echo "  - icon.ico - Windows app icon"
-echo "  - proma-logos/iconTemplate.png - macOS tray (22x22 @1x)"
-echo "  - proma-logos/iconTemplate@2x.png - macOS tray (44x44 @2x Retina)"
-echo "  - proma-logos/iconTemplate@3x.png - macOS tray (66x66 @3x)"
+echo "  - mroma-logos/iconTemplate.png - macOS tray (22x22 @1x)"
+echo "  - mroma-logos/iconTemplate@2x.png - macOS tray (44x44 @2x Retina)"
+echo "  - mroma-logos/iconTemplate@3x.png - macOS tray (66x66 @3x)"

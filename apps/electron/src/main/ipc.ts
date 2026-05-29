@@ -146,6 +146,7 @@ import { extractTextFromAttachment } from './lib/document-parser'
 import { getUserProfile, updateUserProfile } from './lib/user-profile-service'
 import { getSettings, updateSettings } from './lib/settings-service'
 import { setDockBadgeCount } from './lib/dock-badge-service'
+import { applyLinuxWindowIcon, getBundledResourcesDir, resolveAppIconPath } from './lib/app-icon-service'
 
 import { checkEnvironment } from './lib/environment-checker'
 import { fetchInstallerManifest, findInstallerSource } from './lib/installer-manifest'
@@ -347,26 +348,6 @@ function ensurePathAllowed(filePath: string, options?: FileAccessOptions): boole
  * - channel:*: 渠道管理相关
  * - chat:*: 对话管理 + 消息发送 + 流式事件
  */
-/**
- * 打包内置资源目录
- * dev: __dirname/resources（build:resources 阶段拷贝）
- * prod: process.resourcesPath（electron-builder extraResources 产物）
- */
-function getBundledResourcesDir(): string {
-  return app.isPackaged ? process.resourcesPath : join(__dirname, 'resources')
-}
-
-/**
- * 解析应用图标变体的文件路径
- */
-export function resolveAppIconPath(variantId: string): string | null {
-  const resourcesDir = getBundledResourcesDir()
-  if (!variantId || variantId === 'default') {
-    return join(resourcesDir, 'icon.png')
-  }
-  return join(resourcesDir, 'mroma-logos', `mroma-${variantId}.png`)
-}
-
 export function registerIpcHandlers(): void {
   console.log('[IPC] 正在注册 IPC 处理器...')
 
@@ -1095,9 +1076,11 @@ export function registerIpcHandlers(): void {
           return false
         }
 
-        // macOS: 设置 Dock 图标
+        // macOS: 设置 Dock 图标；Linux: 设置当前窗口图标，便于任务栏/Dock 立即刷新。
         if (process.platform === 'darwin' && app.dock) {
           app.dock.setIcon(iconPath)
+        } else if (process.platform === 'linux') {
+          BrowserWindow.getAllWindows().forEach((win) => applyLinuxWindowIcon(win, variantId))
         }
 
         // 持久化到设置

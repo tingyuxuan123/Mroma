@@ -62,6 +62,17 @@ files:
 
 # 通用额外资源
 extraResources:
+  # 运行时窗口/Dock 图标（Linux 需要 BrowserWindow icon 与 .desktop icon 同步）
+  - from: resources/icon.png
+    to: icon.png
+  - from: resources/icon.ico
+    to: icon.ico
+  - from: resources/icon.icns
+    to: icon.icns
+  - from: resources/icons
+    to: icons
+    filter:
+      - "**/*.png"
   # 默认 Skills 模板（首次启动时同步到 ~/.mroma/default-skills/）
   - from: default-skills
     to: default-skills
@@ -140,9 +151,11 @@ nsis:
 # Linux 配置
 # ============================================
 linux:
-  icon: resources/icon.png
+  icon: resources/icons
   category: Development
   executableName: mroma
+  desktop:
+    StartupWMClass: Mroma
   target:
     - target: AppImage
       arch:

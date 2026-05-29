@@ -1,12 +1,15 @@
 import { app, BrowserWindow, dialog, Menu, nativeTheme, protocol, screen, shell } from 'electron'
 import { join } from 'path'
 import { existsSync } from 'fs'
+import { configureLinuxDesktopIdentity, resolveAppIconPath, resolveWindowIconPath } from './lib/app-icon-service'
 
 // Dev 与正式版使用独立的 userData 目录，避免共享 Chromium SingletonLock 导致 dev 启动被静默退出
 // 必须在任何会读取 userData 路径的模块加载之前执行
 if (!app.isPackaged) {
   app.setPath('userData', join(app.getPath('appData'), '@mroma/electron-dev'))
 }
+
+configureLinuxDesktopIdentity()
 
 // 单实例锁：防止重复启动同一个版本（dev/prod 因 userData 已隔离，互不影响）
 //
@@ -219,22 +222,6 @@ function showAndFocusMainWindow(): void {
   mainWindow.focus()
 }
 
-/**
- * Get the appropriate app icon path for the current platform
- */
-function getIconPath(): string {
-  // resources 在 build:resources 阶段被复制到 dist/ 下，与 main.cjs 同级
-  const resourcesDir = join(__dirname, 'resources')
-
-  if (process.platform === 'darwin') {
-    return join(resourcesDir, 'icon.icns')
-  } else if (process.platform === 'win32') {
-    return join(resourcesDir, 'icon.ico')
-  } else {
-    return join(resourcesDir, 'icon.png')
-  }
-}
-
 function saveMainWindowState(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return
   const isMaximized = mainWindow.isMaximized()
@@ -252,7 +239,8 @@ function saveMainWindowState(): void {
 }
 
 function createWindow(): void {
-  const iconPath = getIconPath()
+  const settings = getSettings()
+  const iconPath = resolveWindowIconPath(settings)
   const iconExists = existsSync(iconPath)
 
   if (!iconExists) {
@@ -270,7 +258,7 @@ function createWindow(): void {
       }
     : { titleBarStyle: 'hidden' as const }
 
-  const savedState = getSettings().mainWindowState
+  const savedState = settings.mainWindowState
   const initialBounds = savedState
     ? { width: savedState.width, height: savedState.height, x: savedState.x, y: savedState.y }
     : { width: 1400, height: 900 }
@@ -418,12 +406,8 @@ async function bootstrap(): Promise<void> {
   // Set dock icon on macOS (required for dev mode, bundled apps use Info.plist)
   // 如果用户有保存的图标偏好则使用，否则用默认图标
   if (process.platform === 'darwin' && app.dock) {
-    const { resolveAppIconPath } = require('./ipc')
     const settings = getSettings()
-    const variantId = settings.appIconVariant
-    const dockIconPath = variantId
-      ? resolveAppIconPath(variantId)
-      : join(__dirname, 'resources/icon.png')
+    const dockIconPath = resolveAppIconPath(settings.appIconVariant)
     if (dockIconPath && existsSync(dockIconPath)) {
       app.dock.setIcon(dockIconPath)
     }

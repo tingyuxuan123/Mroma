@@ -301,53 +301,43 @@ export function ModelSelector({
           />
         </div>
 
-        <div className="max-h-[300px] overflow-y-auto">
+        <div className="max-h-[300px] overflow-y-auto scrollbar-thin">
           {filteredGrouped.size === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">未找到模型</div>
           ) : (
             (() => {
               let flatIndex = 0
               return Array.from(filteredGrouped.entries()).map(([channelId, options]) => {
-                const first = options[0]
-                if (!first) return null
-                return (
-                  <div key={channelId}>
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/40">
-                      <img src={getChannelLogo(channels.find((c) => c.id === channelId)?.baseUrl ?? '')} alt={first.channelName} className="size-4 rounded object-cover" />
-                      <span className="text-xs font-medium text-muted-foreground">{first.channelName}</span>
-                    </div>
-                    {options.map((option) => {
-                      const isSelected = selectedModel?.channelId === option.channelId && selectedModel?.modelId === option.modelId
-                      const currentFlatIndex = flatIndex++
-                      const isHighlighted = currentFlatIndex === highlightIndex
-                      const modelEffort = isAgentMode ? getModelReasoningEffort(channels, option.channelId) : undefined
-                      const modelEffortBadge = modelEffort ? EFFORT_BADGE_LABELS[modelEffort] ?? modelEffort : null
-                      return (
-                        <button
-                          key={`${option.channelId}:${option.modelId}`}
-                          ref={(el) => { if (el) itemRefs.current.set(currentFlatIndex, el); else itemRefs.current.delete(currentFlatIndex) }}
-                          type="button"
-                          onClick={() => handleSelect(option)}
-                          onMouseEnter={() => setHighlightIndex(currentFlatIndex)}
-                          className={cn(
-                            'flex items-center gap-2.5 w-full px-3 py-1.5 text-left transition-colors',
-                            'hover:bg-accent',
-                            isHighlighted && 'bg-accent',
-                            isSelected && 'bg-foreground/10 border-l-2 border-l-primary'
-                          )}
-                        >
-                          <img src={getModelLogo(option.modelId, option.provider)} alt={option.modelName} className="size-4 rounded object-cover flex-shrink-0" />
-                          <span className={cn('flex-1 text-sm truncate', isSelected ? 'font-medium text-foreground' : 'text-foreground/80')}>
-                            {option.modelName}
-                          </span>
-                          {modelEffortBadge && (
-                            <span className="text-[10px] text-muted-foreground/60 font-medium flex-shrink-0">{modelEffortBadge}</span>
-                          )}
-                        </button>
-                      )
-                    })}
-                  </div>
-                )
+                return options.map((option) => {
+                  const isSelected = selectedModel?.channelId === option.channelId && selectedModel?.modelId === option.modelId
+                  const currentFlatIndex = flatIndex++
+                  const isHighlighted = currentFlatIndex === highlightIndex
+                  const modelEffort = isAgentMode ? getModelReasoningEffort(channels, option.channelId) : undefined
+                  const modelEffortBadge = modelEffort ? EFFORT_BADGE_LABELS[modelEffort] ?? modelEffort : null
+                  return (
+                    <button
+                      key={`${option.channelId}:${option.modelId}`}
+                      ref={(el) => { if (el) itemRefs.current.set(currentFlatIndex, el); else itemRefs.current.delete(currentFlatIndex) }}
+                      type="button"
+                      onClick={() => handleSelect(option)}
+                      onMouseEnter={() => setHighlightIndex(currentFlatIndex)}
+                      className={cn(
+                        'flex items-center gap-2.5 w-full px-3 py-1.5 text-left transition-colors',
+                        'hover:bg-accent',
+                        isHighlighted && 'bg-accent',
+                        isSelected && 'bg-foreground/10 border-l-2 border-l-primary'
+                      )}
+                    >
+                      <img src={getModelLogo(option.modelId, option.provider)} alt={option.modelName} className="size-4 rounded object-cover flex-shrink-0" />
+                      <span className={cn('flex-1 text-sm truncate', isSelected ? 'font-medium text-foreground' : 'text-foreground/80')}>
+                        {option.modelName}
+                      </span>
+                      {modelEffortBadge && (
+                        <span className="text-[10px] text-muted-foreground/60 font-medium flex-shrink-0">{modelEffortBadge}</span>
+                      )}
+                    </button>
+                  )
+                })
               })
             })()
           )}
